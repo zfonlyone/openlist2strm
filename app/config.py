@@ -238,8 +238,18 @@ class Config:
                 # Return default config if no file found
                 return cls()
         
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        # Try to load config with error handling for encoding issues
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except UnicodeDecodeError:
+            # Try with different encoding or ignore errors
+            print(f"Warning: Config file has encoding issues, trying with error handling")
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            print(f"Warning: Failed to parse config file: {e}")
+            return cls()
         
         return cls.from_dict(data)
     
