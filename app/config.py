@@ -75,16 +75,17 @@ class TelegramConfig:
 @dataclass
 class WebAuthConfig:
     """Web authentication configuration"""
-    enabled: bool = False
+    enabled: bool = True  # Auth enabled by default
     username: str = "admin"
-    password: str = "admin"
+    password: str = ""  # Password hash (empty = needs setup)
+    api_token: str = ""  # API token for programmatic access
 
 
 @dataclass
 class WebConfig:
     """Web interface configuration"""
     enabled: bool = True
-    port: int = 8080
+    port: int = 9527
     auth: WebAuthConfig = field(default_factory=WebAuthConfig)
 
 
@@ -192,9 +193,10 @@ class Config:
             w = data["web"]
             auth_data = w.get("auth", {})
             auth = WebAuthConfig(
-                enabled=auth_data.get("enabled", False),
+                enabled=auth_data.get("enabled", True),
                 username=auth_data.get("username", "admin"),
-                password=auth_data.get("password", "admin"),
+                password=auth_data.get("password", ""),
+                api_token=auth_data.get("api_token", ""),
             )
             config.web = WebConfig(
                 enabled=w.get("enabled", config.web.enabled),

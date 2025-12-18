@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_config
@@ -139,9 +139,28 @@ templates = Jinja2Templates(directory=str(templates_path))
 app.include_router(api_router)
 
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Serve the login page"""
+    config = get_config()
+    
+    # If auth is disabled, redirect to main page
+    if not config.web.auth.enabled:
+        return RedirectResponse(url="/", status_code=302)
+    
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Serve the main web interface"""
+    from app.api.auth import require_auth_redirect
+    
+    # Check authentication
+    redirect = require_auth_redirect(request)
+    if redirect:
+        return redirect
+    
     return templates.TemplateResponse("index.html", {"request": request})
 
 

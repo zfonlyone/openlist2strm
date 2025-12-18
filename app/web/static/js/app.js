@@ -31,6 +31,13 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
 
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, options);
+
+        // Handle 401 Unauthorized - redirect to login
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+
         const result = await response.json();
 
         if (!response.ok) {
@@ -42,6 +49,16 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         console.error('API Error:', error);
         throw error;
     }
+}
+
+// Logout function
+async function logout() {
+    try {
+        await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+    } catch (e) {
+        // Ignore errors
+    }
+    window.location.href = '/login';
 }
 
 function formatBytes(bytes) {

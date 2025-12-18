@@ -95,11 +95,16 @@ web:
   enabled: true
   # 监听端口
   port: 9527
-  # 认证配置 (可选)
+  # 认证配置
   auth:
-    enabled: false
+    # 是否启用认证 (强烈建议启用)
+    enabled: true
+    # 管理员用户名
     username: admin
-    password: admin
+    # 管理员密码 (首次运行时通过 deploy.sh 设置)
+    password: ""
+    # API Token (用于程序化访问，可通过 Web 界面生成)
+    api_token: ""
 
 # 日志配置
 logging:
@@ -109,3 +114,4 @@ logging:
   retention_days: 7
   # 是否输出彩色日志
   colorize: true
+
