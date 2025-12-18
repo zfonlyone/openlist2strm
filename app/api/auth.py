@@ -105,6 +105,11 @@ def verify_api_token(token: str) -> bool:
     return token == config.web.auth.api_token
 
 
+def generate_api_token() -> str:
+    """Generate a new random API token"""
+    return secrets.token_urlsafe(48)
+
+
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
