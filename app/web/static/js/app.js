@@ -582,6 +582,92 @@ async function reloadConfig() {
     }
 }
 
+// ==================== Config Backup/Restore ====================
+
+async function exportConfig() {
+    try {
+        const response = await fetch(`${API_BASE}/settings/export`);
+        const blob = await response.blob();
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `openlist2strm_config_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showToast('成功', '配置已导出', 'success');
+    } catch (error) {
+        showToast('错误', '导出失败: ' + error.message, 'error');
+    }
+}
+
+async function importConfig(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    if (!confirm('确定要导入此配置文件吗？现有配置将被合并（密码和Token不会被覆盖）。')) {
+        input.value = '';
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${API_BASE}/settings/import`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || 'Import failed');
+        }
+
+        showToast('成功', '配置已导入', 'success');
+        await loadSettings();
+    } catch (error) {
+        showToast('错误', '导入失败: ' + error.message, 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+// ==================== OpenList Token ====================
+
+function toggleTokenVisibility() {
+    const input = document.getElementById('openlist-token');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveOpenListToken() {
+    const token = document.getElementById('openlist-token').value.trim();
+
+    if (!token) {
+        showToast('警告', '请输入 Token', 'warning');
+        return;
+    }
+
+    try {
+        await apiRequest('/settings/openlist/token', 'PUT', { token });
+        showToast('成功', 'OpenList Token 已保存', 'success');
+        document.getElementById('openlist-token').value = '';
+        await testConnection();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
 // ==================== Mobile Menu ====================
 
 function toggleMobileMenu() {

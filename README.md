@@ -17,6 +17,11 @@
 - 🚦 **QoS 限流** - 可配置的请求速率限制，避免对 OpenList 造成压力
 - 💾 **轻量级缓存** - SQLite 缓存，无需额外数据库服务
 
+### 安全功能
+- 🔐 **用户认证** - Web 界面登录保护，防止未授权访问
+- 🔑 **API Token** - 支持 Bearer Token 认证的 API 调用
+- 🛡️ **密码加密** - 密码使用 SHA256 哈希存储
+
 ### 管理功能
 - 🌐 **响应式 Web 界面** - 现代化的管理界面，完美适配移动设备
 - 🤖 **Telegram 机器人** - 通过 Telegram 远程控制和接收通知
@@ -50,6 +55,8 @@ docker-compose up -d
 4. **访问管理界面**
 ```
 http://your-server-ip:9527
+默认用户名: admin
+密码: 在配置文件中设置
 ```
 
 ### 使用 Docker 命令
@@ -57,12 +64,12 @@ http://your-server-ip:9527
 ```bash
 docker run -d \
   --name openlist2strm \
-  -p 9527:9527 \
+  -p 127.0.0.1:9527:9527 \
   -v /opt/openlist2strm/config:/config:ro \
   -v /opt/openlist2strm/data:/data \
   -v /etc/media-server/movie/strm:/strm \
   -e TZ=Asia/Shanghai \
-  openlist2strm:latest
+  zfonlyone/openlist2strm:latest
 ```
 
 ## ⚙️ 配置说明
@@ -73,7 +80,7 @@ docker run -d \
 # OpenList 配置
 openlist:
   host: http://openlist:5244   # OpenList 地址
-  token: your-api-token        # API Token
+  token: your-api-token        # API Token (从 OpenList 后台获取)
   timeout: 30                  # 请求超时时间
 
 # 路径配置
@@ -118,11 +125,12 @@ telegram:
 # Web 界面
 web:
   enabled: true
-  port: 8080
+  port: 9527
   auth:
-    enabled: false
+    enabled: true             # 强烈建议启用
     username: admin
-    password: admin
+    password: your-password-hash  # 使用 SHA256 哈希
+    api_token: ""             # API Token (可选)
 ```
 
 ### 获取 OpenList API Token
@@ -130,6 +138,33 @@ web:
 1. 登录 OpenList 管理后台
 2. 进入 **设置** -> **其他**
 3. 复制 **令牌** 字段的值
+
+## 🔐 认证说明
+
+### Web 界面登录
+
+访问 Web 界面时需要输入用户名和密码登录。
+
+- **用户名**: 默认 `admin`
+- **密码**: 在配置文件中设置
+
+### API Token 认证
+
+对于程序化 API 调用，可以使用 Bearer Token：
+
+```bash
+curl -X POST http://localhost:9527/api/scan \
+  -H "Authorization: Bearer <your-api-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"folders": ["/115/电影"]}'
+```
+
+### 豁免端点
+
+以下端点无需认证：
+- `GET /api/health` - 健康检查
+- `GET /login` - 登录页面
+- `GET /static/*` - 静态资源
 
 ## 🤖 Telegram 机器人
 
@@ -171,7 +206,9 @@ web:
 主要 API 端点：
 
 ```
-GET  /api/health          # 健康检查
+GET  /api/health          # 健康检查 (无需认证)
+POST /api/auth/login      # 登录
+POST /api/auth/logout     # 登出
 GET  /api/status          # 系统状态
 POST /api/scan            # 触发扫描
 GET  /api/scan/progress   # 扫描进度
@@ -230,7 +267,7 @@ docker-compose logs -f openlist2strm
 ### 健康检查
 
 ```bash
-curl http://localhost:8080/api/health
+curl http://localhost:9527/api/health
 ```
 
 ## 🤝 常见问题
@@ -249,7 +286,8 @@ qos:
 
 通过 Web 界面或 Telegram 机器人选择特定文件夹，或使用 API：
 ```bash
-curl -X POST http://localhost:8080/api/scan \
+curl -X POST http://localhost:9527/api/scan \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"folders": ["/115/电影"]}'
 ```
@@ -258,7 +296,8 @@ curl -X POST http://localhost:8080/api/scan \
 
 使用强制扫描模式：
 ```bash
-curl -X POST http://localhost:8080/api/scan \
+curl -X POST http://localhost:9527/api/scan \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"force": true}'
 ```
@@ -271,6 +310,10 @@ curl -X POST http://localhost:8080/api/scan \
 2. 确保 API Token 有效
 3. 检查网络连接和防火墙设置
 4. 使用设置页面的"测试连接"功能
+
+### Q: 忘记登录密码怎么办？
+
+编辑配置文件 `/config/config.yml`，修改 `web.auth.password` 为新密码的 SHA256 哈希值，或联系管理员通过 `ms` 工具重置。
 
 ## 📄 许可证
 

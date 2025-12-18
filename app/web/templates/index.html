@@ -306,6 +306,27 @@
                     <button class="btn btn-primary" onclick="updateQoS()">保存 QoS 设置</button>
                 </div>
 
+                <!-- OpenList Token Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔑 OpenList API Token</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">API Token</label>
+                        <div style="display: flex; gap: var(--spacing-sm);">
+                            <input type="password" class="form-input" id="openlist-token"
+                                placeholder="输入 OpenList API Token" style="flex: 1;">
+                            <button class="btn btn-secondary" onclick="toggleTokenVisibility()">👁️</button>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">
+                            获取方式: OpenList 后台 → 设置 → 其他 → 令牌
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveOpenListToken()">💾 保存 Token</button>
+                </div>
+
                 <!-- Connection Settings -->
                 <div class="card">
                     <div class="card-header">
@@ -326,6 +347,28 @@
                         <button class="btn btn-secondary" onclick="reloadConfig()">
                             🔄 重新加载配置
                         </button>
+                    </div>
+                </div>
+
+                <!-- Config Backup/Restore -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📦 配置备份与恢复</span>
+                    </div>
+
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                        导出配置可用于备份或迁移。敏感信息(密码/Token)在导出时会被隐藏。
+                    </p>
+
+                    <div class="action-buttons" style="margin-bottom: var(--spacing-md);">
+                        <button class="btn btn-secondary" onclick="exportConfig()">
+                            📤 导出配置 (JSON)
+                        </button>
+                        <label class="btn btn-secondary" style="cursor: pointer; margin: 0;">
+                            📥 导入配置
+                            <input type="file" id="import-config-file" accept=".json" style="display: none;"
+                                onchange="importConfig(this)">
+                        </label>
                     </div>
                 </div>
 
