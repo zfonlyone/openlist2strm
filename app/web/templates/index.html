@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OpenList2STRM - 轻量级 OpenList 到 STRM 文件转换工具">
+    <meta name="theme-color" content="#0f0f1a">
+    <title>OpenList2STRM</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <style>
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-md);
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--glass-border);
+        }
+        
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+        }
+        
+        .modal-body {
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        /* Action Buttons Group */
+        .action-buttons {
+            display: flex;
+            gap: var(--spacing-sm);
+            flex-wrap: wrap;
+        }
+        
+        /* QoS Form Grid */
+        .qos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--spacing-md);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <span class="icon">🎬</span>
+                    <span>OpenList2STRM</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-item active" data-page="dashboard">
+                    <span class="icon">📊</span>
+                    <span>仪表盘</span>
+                </div>
+                <div class="nav-item" data-page="folders">
+                    <span class="icon">📁</span>
+                    <span>文件夹</span>
+                </div>
+                <div class="nav-item" data-page="tasks">
+                    <span class="icon">⏰</span>
+                    <span>任务</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <span class="icon">⚙️</span>
+                    <span>设置</span>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">
+                    OpenList2STRM v1.0.0
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Sidebar Overlay for Mobile -->
+        <div class="sidebar-overlay"></div>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div id="page-dashboard" class="page">
+                <div class="page-header">
+                    <h1 class="page-title">仪表盘</h1>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="triggerScan()">
+                            🔄 立即扫描
+                        </button>
+                        <button class="btn btn-secondary" onclick="triggerScan(null, true)">
+                            ⚡ 强制全量扫描
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Scanner Status (Dynamic) -->
+                <div id="scanner-status"></div>
+                
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📄</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-files">-</div>
+                            <div class="stat-label">总文件数</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon success">🎬</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-strm">-</div>
+                            <div class="stat-label">STRM 文件</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon info">💾</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-size">-</div>
+                            <div class="stat-label">总大小</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon warning">🕐</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-last-scan" style="font-size: 1rem;">-</div>
+                            <div class="stat-label">上次扫描</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Schedule Info Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">⏰ 定时任务</span>
+                    </div>
+                    <div id="schedule-info">
+                        <span class="badge badge-info">加载中...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Folders Page -->
+            <div id="page-folders" class="page hidden">
+                <div class="page-header">
+                    <h1 class="page-title">监控文件夹</h1>
+                    <button class="btn btn-primary" onclick="loadFolders()">
+                        🔄 刷新
+                    </button>
+                </div>
+                
+                <div class="card">
+                    <div class="folder-list" id="folders-list">
+                        <div class="empty-state">
+                            <div class="spinner"></div>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tasks Page -->
+            <div id="page-tasks" class="page hidden">
+                <div class="page-header">
+                    <h1 class="page-title">任务管理</h1>
+                </div>
+                
+                <!-- Schedule Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">⏰ 定时任务设置</span>
+                        <span id="schedule-status"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Cron 表达式</label>
+                        <div style="display: flex; gap: var(--spacing-sm);">
+                            <input type="text" class="form-input" id="schedule-cron" 
+                                placeholder="0 2 * * *" style="flex: 1;">
+                            <button class="btn btn-primary" onclick="updateSchedule()">保存</button>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">
+                            格式: 分 时 日 月 周 (例: "0 2 * * *" = 每天凌晨2点)
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="color: var(--text-secondary);">下次执行:</span>
+                            <span id="schedule-next">-</span>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" onclick="toggleScheduler(true)">暂停</button>
+                            <button class="btn btn-success" onclick="toggleScheduler(false)">恢复</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scan History -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📜 扫描历史</span>
+                        <button class="btn btn-secondary btn-sm" onclick="loadTasks()">刷新</button>
+                    </div>
+                    <div id="scan-history">
+                        <div class="empty-state">
+                            <div class="spinner"></div>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Settings Page -->
+            <div id="page-settings" class="page hidden">
+                <div class="page-header">
+                    <h1 class="page-title">设置</h1>
+                </div>
+                
+                <!-- QoS Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🚦 QoS 限流设置</span>
+                    </div>
+                    
+                    <div class="qos-grid">
+                        <div class="form-group">
+                            <label class="form-label">每秒请求数 (QPS)</label>
+                            <input type="number" class="form-input" id="qos-qps" 
+                                min="0.1" max="100" step="0.1" value="5">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">最大并发数</label>
+                            <input type="number" class="form-input" id="qos-concurrent" 
+                                min="1" max="20" value="3">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">请求间隔 (ms)</label>
+                            <input type="number" class="form-input" id="qos-interval" 
+                                min="0" max="5000" step="50" value="200">
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="updateQoS()">保存 QoS 设置</button>
+                </div>
+                
+                <!-- Connection Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔗 连接设置</span>
+                    </div>
+                    
+                    <div id="settings-display">
+                        <div class="empty-state">
+                            <div class="spinner"></div>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="action-buttons" style="margin-top: var(--spacing-md);">
+                        <button class="btn btn-secondary" onclick="testConnection()">
+                            🔍 测试连接
+                        </button>
+                        <button class="btn btn-secondary" onclick="reloadConfig()">
+                            🔄 重新加载配置
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Cache Management -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">💾 缓存管理</span>
+                    </div>
+                    
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                        清除缓存将删除所有扫描历史和文件索引数据。下次扫描将重新索引所有文件。
+                    </p>
+                    
+                    <button class="btn btn-danger" onclick="clearCache()">
+                        🗑️ 清除缓存
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">
+        ☰
+    </button>
+    
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Browse Modal -->
+    <div id="browse-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">📂 浏览文件夹</span>
+                <button class="modal-close" onclick="closeModal('browse-modal')">&times;</button>
+            </div>
+            <div class="modal-body" id="browse-content">
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

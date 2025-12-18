@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  openlist2strm:
+    image: zfonlyone/openlist2strm:latest
+    container_name: openlist2strm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9527:9527"
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - /etc/media-server/movie/strm:/strm
+    environment:
+      - TZ=Asia/Shanghai
+      - CONFIG_PATH=/config/config.yml
+    networks:
+      - media-server
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:9527/api/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  media-server:
+    external: true
