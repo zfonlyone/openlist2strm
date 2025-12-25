@@ -23,6 +23,7 @@ from app.scheduler import get_scheduler_manager
 from app.telegram import start_telegram_bot, stop_telegram_bot
 from app.core.cache import get_cache_manager, close_cache_manager
 from app.core.openlist import close_openlist_client
+from app.core.emby import get_emby_client, close_emby_client
 
 # Configure logging
 def setup_logging():
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     await scheduler.stop()
     await stop_telegram_bot()
     await close_openlist_client()
+    await close_emby_client()
     await close_cache_manager()
     
     logger.info("Goodbye!")
@@ -112,7 +114,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OpenList2STRM",
     description="轻量级 OpenList 到 STRM 文件转换工具",
-    version="1.0.0",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,

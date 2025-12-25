@@ -1,16 +1,16 @@
-"""Scheduled jobs management"""
+"""Scheduled jobs management with multi-task support"""
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
 
-from app.config import get_config
-from app.core.scanner import get_scanner
+from app.config import get_config, TaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +20,20 @@ class SchedulerManager:
     Manages scheduled scanning jobs using APScheduler.
     
     Features:
+    - Multi-task support with unique IDs
     - Cron expression support
-    - Manual trigger
-    - Job history
+    - Task lifecycle: create, delete, enable, disable, pause, resume
+    - One-time task support
     - Event callbacks
     """
     
-    JOB_ID = "strm_scan"
+    JOB_PREFIX = "strm_task_"
     
     def __init__(self):
         """Initialize scheduler manager"""
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._running = False
-        self._last_run: Optional[datetime] = None
-        self._next_run: Optional[datetime] = None
+        self._tasks: Dict[str, TaskConfig] = {}
         self._on_scan_complete: Optional[Callable] = None
         self._on_scan_error: Optional[Callable] = None
     
@@ -66,14 +66,36 @@ class SchedulerManager:
         else:
             raise ValueError(f"Invalid cron expression: {cron_expr}")
     
-    async def _scan_job(self) -> None:
-        """Execute scan job"""
-        logger.info("Scheduled scan job started")
-        self._last_run = datetime.now()
+    def _get_job_id(self, task_id: str) -> str:
+        """Get APScheduler job ID from task ID"""
+        return f"{self.JOB_PREFIX}{task_id}"
+    
+    async def _execute_task(self, task_id: str) -> None:
+        """Execute a scheduled task"""
+        task = self._tasks.get(task_id)
+        if not task:
+            logger.warning(f"Task not found: {task_id}")
+            return
+        
+        if task.paused:
+            logger.info(f"Task {task_id} is paused, skipping")
+            return
+        
+        logger.info(f"Executing scheduled task: {task.name} ({task_id})")
+        task.last_run = datetime.now().isoformat()
         
         try:
+            from app.core.scanner import get_scanner
+            from app.core.emby import get_emby_client
+            
             scanner = get_scanner()
-            results = await scanner.scan_all()
+            
+            # Scan the task's folder
+            if task.folder:
+                result = await scanner.scan_folder(task.folder)
+                results = [result]
+            else:
+                results = await scanner.scan_all()
             
             # Summarize results
             total_created = sum(r.files_created for r in results)
@@ -81,36 +103,95 @@ class SchedulerManager:
             total_deleted = sum(r.files_deleted for r in results)
             
             logger.info(
-                f"Scheduled scan completed: "
+                f"Task {task.name} completed: "
                 f"created={total_created}, updated={total_updated}, deleted={total_deleted}"
             )
+            
+            # Trigger Emby refresh
+            emby = get_emby_client()
+            await emby.notify_scan_complete({
+                "task_id": task_id,
+                "task_name": task.name,
+                "created": total_created,
+                "updated": total_updated,
+            })
+            
+            # Handle one-time task
+            if task.one_time:
+                logger.info(f"One-time task {task_id} completed, disabling")
+                task.enabled = False
+                await self._remove_job(task_id)
             
             if self._on_scan_complete:
                 await self._on_scan_complete(results)
                 
         except Exception as e:
-            logger.error(f"Scheduled scan failed: {e}")
+            logger.error(f"Task {task_id} failed: {e}")
             if self._on_scan_error:
                 await self._on_scan_error(str(e))
             raise
     
     def _on_job_executed(self, event: JobExecutionEvent) -> None:
         """Handle job execution event"""
-        if event.job_id == self.JOB_ID:
-            self._update_next_run()
+        if event.job_id.startswith(self.JOB_PREFIX):
+            task_id = event.job_id[len(self.JOB_PREFIX):]
+            self._update_next_run(task_id)
     
     def _on_job_error(self, event: JobExecutionEvent) -> None:
         """Handle job error event"""
-        if event.job_id == self.JOB_ID:
-            logger.error(f"Job error: {event.exception}")
-            self._update_next_run()
+        if event.job_id.startswith(self.JOB_PREFIX):
+            task_id = event.job_id[len(self.JOB_PREFIX):]
+            logger.error(f"Task {task_id} error: {event.exception}")
+            self._update_next_run(task_id)
     
-    def _update_next_run(self) -> None:
-        """Update next run time"""
-        if self._scheduler:
-            job = self._scheduler.get_job(self.JOB_ID)
+    def _update_next_run(self, task_id: str) -> None:
+        """Update next run time for a task"""
+        if self._scheduler and task_id in self._tasks:
+            job = self._scheduler.get_job(self._get_job_id(task_id))
             if job:
-                self._next_run = job.next_run_time
+                self._tasks[task_id].next_run = (
+                    job.next_run_time.isoformat() if job.next_run_time else None
+                )
+    
+    async def _add_job(self, task: TaskConfig) -> bool:
+        """Add a job to the scheduler"""
+        if not self._scheduler:
+            return False
+        
+        try:
+            cron_params = self._parse_cron(task.cron)
+            trigger = CronTrigger(**cron_params)
+            
+            self._scheduler.add_job(
+                self._execute_task,
+                trigger=trigger,
+                args=[task.id],
+                id=self._get_job_id(task.id),
+                name=task.name,
+                replace_existing=True,
+            )
+            
+            self._update_next_run(task.id)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to add job for task {task.id}: {e}")
+            return False
+    
+    async def _remove_job(self, task_id: str) -> bool:
+        """Remove a job from the scheduler"""
+        if not self._scheduler:
+            return False
+        
+        try:
+            job_id = self._get_job_id(task_id)
+            job = self._scheduler.get_job(job_id)
+            if job:
+                self._scheduler.remove_job(job_id)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove job {task_id}: {e}")
+            return False
     
     async def start(self) -> None:
         """Start the scheduler"""
@@ -119,10 +200,6 @@ class SchedulerManager:
         
         config = get_config()
         
-        if not config.schedule.enabled:
-            logger.info("Scheduler is disabled")
-            return
-        
         # Create scheduler
         self._scheduler = AsyncIOScheduler()
         
@@ -130,35 +207,38 @@ class SchedulerManager:
         self._scheduler.add_listener(self._on_job_executed, EVENT_JOB_EXECUTED)
         self._scheduler.add_listener(self._on_job_error, EVENT_JOB_ERROR)
         
-        # Parse cron expression
-        try:
-            cron_params = self._parse_cron(config.schedule.cron)
-        except ValueError as e:
-            logger.error(f"Invalid cron expression: {e}")
-            return
+        # Load tasks from config
+        for task_config in config.schedule.tasks:
+            self._tasks[task_config.id] = task_config
+            if task_config.enabled and not task_config.paused:
+                await self._add_job(task_config)
         
-        # Add job
-        trigger = CronTrigger(**cron_params)
-        self._scheduler.add_job(
-            self._scan_job,
-            trigger=trigger,
-            id=self.JOB_ID,
-            name="STRM Scan",
-            replace_existing=True,
-        )
+        # Legacy single-task support (migrate to multi-task)
+        if config.schedule.enabled and not config.schedule.tasks:
+            # Create default task from legacy config
+            default_task = TaskConfig(
+                id="default",
+                name="Default Scan",
+                folder="",  # All folders
+                cron=config.schedule.cron,
+                enabled=True,
+            )
+            self._tasks["default"] = default_task
+            await self._add_job(default_task)
         
         # Start scheduler
         self._scheduler.start()
         self._running = True
-        self._update_next_run()
         
-        logger.info(f"Scheduler started with cron: {config.schedule.cron}")
-        logger.info(f"Next run: {self._next_run}")
+        task_count = len([t for t in self._tasks.values() if t.enabled])
+        logger.info(f"Scheduler started with {task_count} active tasks")
         
-        # Run on startup if configured
+        # Run on startup tasks if configured
         if config.schedule.on_startup:
-            logger.info("Running scan on startup...")
-            asyncio.create_task(self._scan_job())
+            for task_id, task in self._tasks.items():
+                if task.enabled:
+                    logger.info(f"Running task {task.name} on startup...")
+                    asyncio.create_task(self._execute_task(task_id))
     
     async def stop(self) -> None:
         """Stop the scheduler"""
@@ -168,40 +248,187 @@ class SchedulerManager:
         self._running = False
         logger.info("Scheduler stopped")
     
-    async def trigger_now(self, folders: Optional[List[str]] = None, force: bool = False) -> dict:
+    # ============ Task Management API ============
+    
+    async def create_task(
+        self,
+        name: str,
+        folder: str,
+        cron: str,
+        enabled: bool = True,
+        one_time: bool = False,
+    ) -> TaskConfig:
         """
-        Trigger scan immediately.
+        Create and schedule a new task.
         
         Args:
-            folders: Optional list of folders to scan (None for all)
-            force: Force regenerate all STRM files
+            name: Display name
+            folder: Folder path to scan
+            cron: Cron expression
+            enabled: Whether to enable immediately
+            one_time: Run once then disable
             
         Returns:
-            Scan results summary
+            Created TaskConfig
         """
-        logger.info(f"Manual scan triggered: folders={folders}, force={force}")
+        task = TaskConfig(
+            id=f"task_{uuid.uuid4().hex[:8]}",
+            name=name,
+            folder=folder,
+            cron=cron,
+            enabled=enabled,
+            one_time=one_time,
+        )
         
-        scanner = get_scanner()
+        self._tasks[task.id] = task
         
-        if folders:
-            results = []
-            for folder in folders:
-                progress = await scanner.scan_folder(folder, force)
-                results.append(progress)
-        else:
-            results = await scanner.scan_all(force)
+        if enabled and self._scheduler:
+            await self._add_job(task)
         
-        # Build summary
-        summary = {
-            "folders_scanned": len(results),
-            "total_files_scanned": sum(r.files_scanned for r in results),
-            "total_files_created": sum(r.files_created for r in results),
-            "total_files_updated": sum(r.files_updated for r in results),
-            "total_files_deleted": sum(r.files_deleted for r in results),
-            "results": [r.to_dict() for r in results],
-        }
+        logger.info(f"Created task: {task.name} ({task.id})")
+        return task
+    
+    async def delete_task(self, task_id: str) -> bool:
+        """
+        Delete a scheduled task.
         
-        return summary
+        Args:
+            task_id: Task ID to delete
+            
+        Returns:
+            True if deleted
+        """
+        if task_id not in self._tasks:
+            return False
+        
+        await self._remove_job(task_id)
+        del self._tasks[task_id]
+        
+        logger.info(f"Deleted task: {task_id}")
+        return True
+    
+    async def update_task(
+        self,
+        task_id: str,
+        name: Optional[str] = None,
+        folder: Optional[str] = None,
+        cron: Optional[str] = None,
+        one_time: Optional[bool] = None,
+    ) -> Optional[TaskConfig]:
+        """
+        Update task settings.
+        
+        Args:
+            task_id: Task ID
+            name: New name (optional)
+            folder: New folder (optional)
+            cron: New cron expression (optional)
+            one_time: New one-time flag (optional)
+            
+        Returns:
+            Updated TaskConfig or None if not found
+        """
+        task = self._tasks.get(task_id)
+        if not task:
+            return None
+        
+        if name is not None:
+            task.name = name
+        if folder is not None:
+            task.folder = folder
+        if one_time is not None:
+            task.one_time = one_time
+        
+        # Update cron and reschedule if changed
+        if cron is not None and cron != task.cron:
+            task.cron = cron
+            if task.enabled and not task.paused:
+                await self._remove_job(task_id)
+                await self._add_job(task)
+        
+        logger.info(f"Updated task: {task.name} ({task_id})")
+        return task
+    
+    async def enable_task(self, task_id: str) -> bool:
+        """Enable a task"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        
+        task.enabled = True
+        if not task.paused:
+            await self._add_job(task)
+        
+        logger.info(f"Enabled task: {task.name}")
+        return True
+    
+    async def disable_task(self, task_id: str) -> bool:
+        """Disable a task"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        
+        task.enabled = False
+        await self._remove_job(task_id)
+        
+        logger.info(f"Disabled task: {task.name}")
+        return True
+    
+    async def pause_task(self, task_id: str) -> bool:
+        """Pause a task (keeps enabled but skips execution)"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        
+        task.paused = True
+        await self._remove_job(task_id)
+        
+        logger.info(f"Paused task: {task.name}")
+        return True
+    
+    async def resume_task(self, task_id: str) -> bool:
+        """Resume a paused task"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        
+        task.paused = False
+        if task.enabled:
+            await self._add_job(task)
+        
+        logger.info(f"Resumed task: {task.name}")
+        return True
+    
+    async def run_task_now(self, task_id: str) -> dict:
+        """
+        Trigger immediate execution of a task.
+        
+        Args:
+            task_id: Task ID to run
+            
+        Returns:
+            Execution result
+        """
+        task = self._tasks.get(task_id)
+        if not task:
+            return {"success": False, "error": "Task not found"}
+        
+        try:
+            await self._execute_task(task_id)
+            return {"success": True, "task_id": task_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def get_task(self, task_id: str) -> Optional[TaskConfig]:
+        """Get a task by ID"""
+        return self._tasks.get(task_id)
+    
+    def get_all_tasks(self) -> List[dict]:
+        """Get all tasks with their current status"""
+        tasks = []
+        for task in self._tasks.values():
+            tasks.append(task.to_dict())
+        return tasks
     
     def set_on_complete(self, callback: Callable) -> None:
         """Set callback for scan completion"""
@@ -214,43 +441,13 @@ class SchedulerManager:
     @property
     def status(self) -> dict:
         """Get scheduler status"""
+        active_tasks = [t for t in self._tasks.values() if t.enabled and not t.paused]
         return {
-            "enabled": get_config().schedule.enabled,
             "running": self._running,
-            "cron": get_config().schedule.cron if self._running else None,
-            "last_run": self._last_run.isoformat() if self._last_run else None,
-            "next_run": self._next_run.isoformat() if self._next_run else None,
+            "total_tasks": len(self._tasks),
+            "active_tasks": len(active_tasks),
+            "tasks": self.get_all_tasks(),
         }
-    
-    async def update_schedule(self, cron: str) -> bool:
-        """
-        Update the schedule cron expression.
-        
-        Args:
-            cron: New cron expression
-            
-        Returns:
-            True if updated successfully
-        """
-        if not self._scheduler:
-            return False
-        
-        try:
-            cron_params = self._parse_cron(cron)
-            trigger = CronTrigger(**cron_params)
-            
-            self._scheduler.reschedule_job(
-                self.JOB_ID,
-                trigger=trigger,
-            )
-            
-            self._update_next_run()
-            logger.info(f"Schedule updated: {cron}, next run: {self._next_run}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to update schedule: {e}")
-            return False
 
 
 # Global scheduler instance

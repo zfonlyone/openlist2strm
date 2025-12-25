@@ -1,10 +1,12 @@
-"""Configuration management for OpenList2STRM"""
+"""Configuration management for OpenList2STRM v1.1.0"""
 
 import os
+import uuid
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -30,6 +32,8 @@ class StrmConfig:
     ])
     keep_structure: bool = True
     url_encode: bool = True
+    mode: str = "path"  # "path" or "direct_link"
+    output_path: str = "/strm"  # Local STRM output path
 
 
 @dataclass
@@ -38,14 +42,70 @@ class QoSConfig:
     qps: float = 5.0
     max_concurrent: int = 3
     interval: int = 200  # milliseconds
+    threading_mode: str = "multi"  # "single" or "multi"
+    thread_pool_size: int = 4
+    rate_limit: int = 100  # requests per minute
+
+
+@dataclass
+class TaskConfig:
+    """Individual scheduled task configuration"""
+    id: str = ""
+    name: str = ""
+    folder: str = ""
+    cron: str = "0 2 * * *"
+    enabled: bool = True
+    paused: bool = False
+    one_time: bool = False
+    last_run: Optional[str] = None
+    next_run: Optional[str] = None
+    
+    def __post_init__(self):
+        if not self.id:
+            self.id = f"task_{uuid.uuid4().hex[:8]}"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "folder": self.folder,
+            "cron": self.cron,
+            "enabled": self.enabled,
+            "paused": self.paused,
+            "one_time": self.one_time,
+            "last_run": self.last_run,
+            "next_run": self.next_run,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TaskConfig":
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            folder=data.get("folder", ""),
+            cron=data.get("cron", "0 2 * * *"),
+            enabled=data.get("enabled", True),
+            paused=data.get("paused", False),
+            one_time=data.get("one_time", False),
+            last_run=data.get("last_run"),
+            next_run=data.get("next_run"),
+        )
 
 
 @dataclass
 class ScheduleConfig:
-    """Schedule configuration"""
-    enabled: bool = True
-    cron: str = "0 2 * * *"
+    """Schedule configuration (legacy + multi-task)"""
+    enabled: bool = False
+    cron: str = "0 4 * * 1"
     on_startup: bool = False
+    tasks: List[TaskConfig] = field(default_factory=list)
+
+
+@dataclass
+class ScanConfig:
+    """Scan mode configuration"""
+    mode: str = "incremental"  # "incremental" or "full"
+    data_source: str = "cache"  # "cache" or "realtime"
 
 
 @dataclass
@@ -68,8 +128,19 @@ class TelegramConfig:
     """Telegram bot configuration"""
     enabled: bool = False
     token: str = ""
+    chat_id: str = ""  # User/Chat ID for notifications
     allowed_users: List[int] = field(default_factory=list)
     notify: TelegramNotifyConfig = field(default_factory=TelegramNotifyConfig)
+
+
+@dataclass
+class EmbyConfig:
+    """Emby notification configuration"""
+    enabled: bool = False
+    host: str = ""  # e.g., http://emby:8096
+    api_key: str = ""
+    library_id: str = ""  # Empty for all libraries
+    notify_on_scan: bool = True
 
 
 @dataclass
@@ -106,8 +177,10 @@ class Config:
     strm: StrmConfig = field(default_factory=StrmConfig)
     qos: QoSConfig = field(default_factory=QoSConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
+    scan: ScanConfig = field(default_factory=ScanConfig)
     incremental: IncrementalConfig = field(default_factory=IncrementalConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    emby: EmbyConfig = field(default_factory=EmbyConfig)
     web: WebConfig = field(default_factory=WebConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
@@ -144,6 +217,8 @@ class Config:
                 extensions=s.get("extensions", config.strm.extensions),
                 keep_structure=s.get("keep_structure", config.strm.keep_structure),
                 url_encode=s.get("url_encode", config.strm.url_encode),
+                mode=s.get("mode", config.strm.mode),
+                output_path=s.get("output_path", config.strm.output_path),
             )
         
         # QoS config
@@ -153,15 +228,31 @@ class Config:
                 qps=q.get("qps", config.qos.qps),
                 max_concurrent=q.get("max_concurrent", config.qos.max_concurrent),
                 interval=q.get("interval", config.qos.interval),
+                threading_mode=q.get("threading_mode", config.qos.threading_mode),
+                thread_pool_size=q.get("thread_pool_size", config.qos.thread_pool_size),
+                rate_limit=q.get("rate_limit", config.qos.rate_limit),
             )
         
-        # Schedule config
+        # Schedule config with multi-task support
         if "schedule" in data:
             sc = data["schedule"]
+            tasks = []
+            if "tasks" in sc:
+                for t in sc["tasks"]:
+                    tasks.append(TaskConfig.from_dict(t))
             config.schedule = ScheduleConfig(
                 enabled=sc.get("enabled", config.schedule.enabled),
                 cron=sc.get("cron", config.schedule.cron),
                 on_startup=sc.get("on_startup", config.schedule.on_startup),
+                tasks=tasks,
+            )
+        
+        # Scan config
+        if "scan" in data:
+            sc = data["scan"]
+            config.scan = ScanConfig(
+                mode=sc.get("mode", config.scan.mode),
+                data_source=sc.get("data_source", config.scan.data_source),
             )
         
         # Incremental config
@@ -184,8 +275,20 @@ class Config:
             config.telegram = TelegramConfig(
                 enabled=tg.get("enabled", config.telegram.enabled),
                 token=tg.get("token", config.telegram.token),
+                chat_id=tg.get("chat_id", config.telegram.chat_id),
                 allowed_users=tg.get("allowed_users", config.telegram.allowed_users),
                 notify=notify,
+            )
+        
+        # Emby config
+        if "emby" in data:
+            em = data["emby"]
+            config.emby = EmbyConfig(
+                enabled=em.get("enabled", config.emby.enabled),
+                host=em.get("host", config.emby.host),
+                api_key=em.get("api_key", config.emby.api_key),
+                library_id=em.get("library_id", config.emby.library_id),
+                notify_on_scan=em.get("notify_on_scan", config.emby.notify_on_scan),
             )
         
         # Web config
@@ -270,16 +373,26 @@ class Config:
                 "extensions": self.strm.extensions,
                 "keep_structure": self.strm.keep_structure,
                 "url_encode": self.strm.url_encode,
+                "mode": self.strm.mode,
+                "output_path": self.strm.output_path,
             },
             "qos": {
                 "qps": self.qos.qps,
                 "max_concurrent": self.qos.max_concurrent,
                 "interval": self.qos.interval,
+                "threading_mode": self.qos.threading_mode,
+                "thread_pool_size": self.qos.thread_pool_size,
+                "rate_limit": self.qos.rate_limit,
             },
             "schedule": {
                 "enabled": self.schedule.enabled,
                 "cron": self.schedule.cron,
                 "on_startup": self.schedule.on_startup,
+                "tasks": [t.to_dict() for t in self.schedule.tasks],
+            },
+            "scan": {
+                "mode": self.scan.mode,
+                "data_source": self.scan.data_source,
             },
             "incremental": {
                 "enabled": self.incremental.enabled,
@@ -288,12 +401,20 @@ class Config:
             "telegram": {
                 "enabled": self.telegram.enabled,
                 "token": "***" if self.telegram.token else "",
+                "chat_id": self.telegram.chat_id,
                 "allowed_users": self.telegram.allowed_users,
                 "notify": {
                     "on_scan_start": self.telegram.notify.on_scan_start,
                     "on_scan_complete": self.telegram.notify.on_scan_complete,
                     "on_error": self.telegram.notify.on_error,
                 },
+            },
+            "emby": {
+                "enabled": self.emby.enabled,
+                "host": self.emby.host,
+                "api_key": "***" if self.emby.api_key else "",
+                "library_id": self.emby.library_id,
+                "notify_on_scan": self.emby.notify_on_scan,
             },
             "web": {
                 "enabled": self.web.enabled,
@@ -309,6 +430,104 @@ class Config:
                 "colorize": self.logging.colorize,
             },
         }
+    
+    def save(self, config_path: Optional[str] = None) -> bool:
+        """Save configuration to file"""
+        if config_path is None:
+            config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
+        
+        try:
+            path = Path(config_path)
+            
+            # Load existing config to preserve passwords
+            existing = {}
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = yaml.safe_load(f) or {}
+            
+            # Build save dict (with full credentials)
+            save_data = {
+                "openlist": {
+                    "host": self.openlist.host,
+                    "token": self.openlist.token,
+                    "timeout": self.openlist.timeout,
+                },
+                "paths": {
+                    "source": self.paths.source,
+                    "output": self.paths.output,
+                },
+                "path_mapping": self.path_mapping,
+                "strm": {
+                    "extensions": self.strm.extensions,
+                    "keep_structure": self.strm.keep_structure,
+                    "url_encode": self.strm.url_encode,
+                    "mode": self.strm.mode,
+                    "output_path": self.strm.output_path,
+                },
+                "qos": {
+                    "qps": self.qos.qps,
+                    "max_concurrent": self.qos.max_concurrent,
+                    "interval": self.qos.interval,
+                    "threading_mode": self.qos.threading_mode,
+                    "thread_pool_size": self.qos.thread_pool_size,
+                    "rate_limit": self.qos.rate_limit,
+                },
+                "schedule": {
+                    "enabled": self.schedule.enabled,
+                    "cron": self.schedule.cron,
+                    "on_startup": self.schedule.on_startup,
+                    "tasks": [t.to_dict() for t in self.schedule.tasks],
+                },
+                "scan": {
+                    "mode": self.scan.mode,
+                    "data_source": self.scan.data_source,
+                },
+                "incremental": {
+                    "enabled": self.incremental.enabled,
+                    "check_method": self.incremental.check_method,
+                },
+                "telegram": {
+                    "enabled": self.telegram.enabled,
+                    "token": self.telegram.token,
+                    "chat_id": self.telegram.chat_id,
+                    "allowed_users": self.telegram.allowed_users,
+                    "notify": {
+                        "on_scan_start": self.telegram.notify.on_scan_start,
+                        "on_scan_complete": self.telegram.notify.on_scan_complete,
+                        "on_error": self.telegram.notify.on_error,
+                    },
+                },
+                "emby": {
+                    "enabled": self.emby.enabled,
+                    "host": self.emby.host,
+                    "api_key": self.emby.api_key,
+                    "library_id": self.emby.library_id,
+                    "notify_on_scan": self.emby.notify_on_scan,
+                },
+                "web": {
+                    "enabled": self.web.enabled,
+                    "port": self.web.port,
+                    "auth": {
+                        "enabled": self.web.auth.enabled,
+                        "username": self.web.auth.username,
+                        "password": self.web.auth.password,
+                        "api_token": self.web.auth.api_token,
+                    },
+                },
+                "logging": {
+                    "level": self.logging.level,
+                    "retention_days": self.logging.retention_days,
+                    "colorize": self.logging.colorize,
+                },
+            }
+            
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True)
+            
+            return True
+        except Exception as e:
+            print(f"Failed to save config: {e}")
+            return False
 
 
 # Global config instance
@@ -327,4 +546,17 @@ def reload_config() -> Config:
     """Reload configuration from file"""
     global _config
     _config = Config.load()
+    return _config
+
+
+def update_config(updates: Dict[str, Any]) -> Config:
+    """Update and save configuration"""
+    global _config
+    if _config is None:
+        _config = Config.load()
+    
+    # Apply updates to current config
+    new_config = Config.from_dict({**_config.to_dict(), **updates})
+    new_config.save()
+    _config = new_config
     return _config

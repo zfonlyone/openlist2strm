@@ -8,6 +8,7 @@ from .scan import router as scan_router
 from .folders import router as folders_router
 from .tasks import router as tasks_router
 from .settings import router as settings_router
+from .cleanup import router as cleanup_router
 from .auth import (
     require_auth, 
     login_user, 
@@ -96,6 +97,7 @@ protected_router.include_router(scan_router, tags=["scan"])
 protected_router.include_router(folders_router, tags=["folders"])
 protected_router.include_router(tasks_router, tags=["tasks"])
 protected_router.include_router(settings_router, tags=["settings"])
+protected_router.include_router(cleanup_router, tags=["cleanup"])
 
 api_router.include_router(protected_router)
 
