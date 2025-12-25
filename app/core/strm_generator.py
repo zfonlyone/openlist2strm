@@ -31,38 +31,54 @@ class StrmGenerator:
         output_path: Optional[str] = None,
         path_mapping: Optional[dict] = None,
         extensions: Optional[list] = None,
-        url_encode: bool = True,
-        keep_structure: bool = True,
+        url_encode: Optional[bool] = None,
+        keep_structure: Optional[bool] = None,
     ):
         """
         Initialize STRM generator.
         
-        Args:
-            output_path: Output directory for STRM files
-            path_mapping: Dict mapping OpenList paths to URL prefixes
-            extensions: List of video file extensions to process
-            url_encode: Whether to URL-encode file paths
-            keep_structure: Whether to preserve directory structure
+        Note: If any arguments are not provided, they will be 
+        fetched dynamically from the global config.
         """
-        config = get_config()
-        
-        self.output_path = Path(output_path or config.paths.output)
-        self.path_mapping = path_mapping or config.path_mapping
-        self.url_encode = url_encode if url_encode is not None else config.strm.url_encode
-        self.keep_structure = keep_structure if keep_structure is not None else config.strm.keep_structure
-        
-        # Process extensions
-        if extensions:
-            self.extensions = set(ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in extensions)
-        else:
-            self.extensions = set(ext.lower() for ext in config.strm.extensions)
+        self._output_path_override = output_path
+        self._path_mapping_override = path_mapping
+        self._extensions_override = extensions
+        self._url_encode_override = url_encode
+        self._keep_structure_override = keep_structure
         
         # Statistics
         self._files_created = 0
         self._files_updated = 0
         self._files_skipped = 0
         
-        logger.info(f"STRM generator initialized: output={self.output_path}")
+        logger.info("STRM generator initialized")
+
+    @property
+    def output_path(self) -> Path:
+        return Path(self._output_path_override or get_config().paths.output)
+
+    @property
+    def path_mapping(self) -> dict:
+        return self._path_mapping_override or get_config().path_mapping
+
+    @property
+    def url_encode(self) -> bool:
+        if self._url_encode_override is not None:
+            return self._url_encode_override
+        return get_config().strm.url_encode
+
+    @property
+    def keep_structure(self) -> bool:
+        if self._keep_structure_override is not None:
+            return self._keep_structure_override
+        return get_config().strm.keep_structure
+
+    @property
+    def extensions(self) -> set:
+        if self._extensions_override:
+            return set(ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in self._extensions_override)
+        return set(ext.lower() for ext in get_config().strm.extensions)
+
     
     def is_video_file(self, filename: str) -> bool:
         """

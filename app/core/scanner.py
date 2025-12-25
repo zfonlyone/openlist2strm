@@ -83,16 +83,20 @@ class Scanner:
         self.generator = generator or get_strm_generator()
         self.cache = cache or get_cache_manager()
         
-        # Configuration
-        config = get_config()
-        self.incremental_enabled = config.incremental.enabled
-        self.check_method = config.incremental.check_method
-        
         # State
         self._progress = ScanProgress()
         self._cancelled = False
         self._running = False
         self._progress_callback: Optional[Callable[[ScanProgress], None]] = None
+
+    @property
+    def incremental_enabled(self) -> bool:
+        return get_config().incremental.enabled
+
+    @property
+    def check_method(self) -> str:
+        return get_config().incremental.check_method
+
     
     @property
     def progress(self) -> ScanProgress:

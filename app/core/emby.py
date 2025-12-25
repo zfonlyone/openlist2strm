@@ -19,18 +19,26 @@ class EmbyClient:
     
     def __init__(self, host: str = "", api_key: str = ""):
         """Initialize Emby client"""
-        config = get_config()
-        self._host = host or config.emby.host
-        self._api_key = api_key or config.emby.api_key
+        self._host_override = host
+        self._api_key_override = api_key
         self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_config_val(self, key: str) -> str:
+        """Get configuration value with override support"""
+        if key == "host":
+            return self._host_override or get_config().emby.host
+        if key == "api_key":
+            return self._api_key_override or get_config().emby.api_key
+        return ""
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
         if self._client is None:
             self._client = httpx.AsyncClient(
                 timeout=30.0,
+                # Note: Headers are set here, but we will override them in requests
+                # to ensure we always use the latest API key.
                 headers={
-                    "X-Emby-Token": self._api_key,
                     "Content-Type": "application/json",
                 }
             )
@@ -44,9 +52,16 @@ class EmbyClient:
     
     def _build_url(self, endpoint: str) -> str:
         """Build full API URL"""
-        host = self._host.rstrip("/")
+        host = self._get_config_val("host").rstrip("/")
         endpoint = endpoint.lstrip("/")
         return f"{host}/{endpoint}"
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Get headers for requests"""
+        return {
+            "X-Emby-Token": self._get_config_val("api_key"),
+            "Content-Type": "application/json",
+        }
     
     async def test_connection(self) -> Dict[str, Any]:
         """
@@ -55,7 +70,9 @@ class EmbyClient:
         Returns:
             Dict with connection status and server info
         """
-        if not self._host or not self._api_key:
+        host = self._get_config_val("host")
+        api_key = self._get_config_val("api_key")
+        if not host or not api_key:
             return {
                 "success": False,
                 "error": "Emby host or API key not configured",
@@ -63,7 +80,10 @@ class EmbyClient:
         
         try:
             client = await self._get_client()
-            response = await client.get(self._build_url("/System/Info"))
+            response = await client.get(
+                self._build_url("/System/Info"),
+                headers=self._get_headers()
+            )
             response.raise_for_status()
             
             data = response.json()
@@ -95,7 +115,10 @@ class EmbyClient:
         """
         try:
             client = await self._get_client()
-            response = await client.get(self._build_url("/Library/VirtualFolders"))
+            response = await client.get(
+                self._build_url("/Library/VirtualFolders"),
+                headers=self._get_headers()
+            )
             response.raise_for_status()
             
             libraries = []
@@ -128,7 +151,7 @@ class EmbyClient:
             logger.debug("Emby notifications disabled, skipping refresh")
             return {"success": True, "skipped": True, "reason": "disabled"}
         
-        if not self._host or not self._api_key:
+        if not self._get_config_val("host") or not self._get_config_val("api_key"):
             return {
                 "success": False,
                 "error": "Emby host or API key not configured",
@@ -149,7 +172,7 @@ class EmbyClient:
                 url = self._build_url("/Library/Refresh")
                 logger.info("Refreshing all Emby libraries")
             
-            response = await client.post(url)
+            response = await client.post(url, headers=self._get_headers())
             response.raise_for_status()
             
             return {

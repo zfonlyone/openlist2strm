@@ -39,29 +39,34 @@ class OpenListClient:
         """
         Initialize OpenList client.
         
-        Args:
-            host: OpenList server URL
-            token: API token for authentication
-            timeout: Request timeout in seconds
+        Note: If host/token/timeout are not provided, they will be 
+        fetched dynamically from the global config on each request.
         """
-        config = get_config()
-        self.host = host or config.openlist.host
-        self.token = token or config.openlist.token
-        self.timeout = timeout or config.openlist.timeout
-        
-        # Remove trailing slash from host
-        self.host = self.host.rstrip("/")
+        self._host = host
+        self._token = token
+        self._timeout = timeout
         
         # HTTP client
         self._client: Optional[httpx.AsyncClient] = None
         
-        logger.info(f"OpenList client initialized: {self.host}")
+        logger.info("OpenList client initialized")
+
+    def _get_config_val(self, key: str, override: Any) -> Any:
+        """Get configuration value with override support"""
+        if override is not None:
+            return override
+        config = get_config()
+        if key == "host": return config.openlist.host
+        if key == "token": return config.openlist.token
+        if key == "timeout": return config.openlist.timeout
+        return None
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
+        timeout = self._get_config_val("timeout", self._timeout)
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout),
+                timeout=httpx.Timeout(timeout),
                 follow_redirects=True,
             )
         return self._client
@@ -74,29 +79,21 @@ class OpenListClient:
     
     def _get_headers(self) -> Dict[str, str]:
         """Get request headers with authentication"""
+        token = self._get_config_val("token", self._token)
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if self.token:
-            headers["Authorization"] = self.token
+        if token:
+            headers["Authorization"] = token
         return headers
     
     async def _post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Make POST request to OpenList API.
-        
-        Args:
-            endpoint: API endpoint (e.g., /api/fs/list)
-            data: Request body data
-            
-        Returns:
-            Response data
-            
-        Raises:
-            OpenListError: If API returns an error
         """
-        url = urljoin(self.host + "/", endpoint.lstrip("/"))
+        host = self._get_config_val("host", self._host).rstrip("/")
+        url = urljoin(host + "/", endpoint.lstrip("/"))
         
         qos = get_qos_limiter()
         async with qos.acquire():
@@ -212,8 +209,9 @@ class OpenListClient:
             return raw_url
         
         # Fallback to constructed URL
+        host = self._get_config_val("host", self._host).rstrip("/")
         encoded_path = quote(path, safe="/")
-        return f"{self.host}/d{encoded_path}"
+        return f"{host}/d{encoded_path}"
     
     async def list_all_files(
         self,

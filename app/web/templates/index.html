@@ -150,48 +150,6 @@
             margin-bottom: var(--spacing-sm);
         }
 
-        /* Toggle Switch */
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 24px;
-            cursor: pointer;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            inset: 0;
-            background: var(--bg-tertiary);
-            border-radius: 24px;
-            transition: 0.3s;
-        }
-
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.3s;
-        }
-
-        input:checked+.toggle-slider {
-            background: var(--primary);
-        }
-
-        input:checked+.toggle-slider:before {
-            transform: translateX(24px);
-        }
-
         /* Cron Help Box */
         .cron-help {
             background: var(--bg-tertiary);
@@ -218,21 +176,6 @@
         .cron-example code {
             font-family: var(--font-mono);
             color: var(--primary);
-        }
-
-        /* Info Box */
-        .info-box {
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: var(--radius-md);
-            padding: var(--spacing-md);
-            margin-bottom: var(--spacing-md);
-            font-size: 0.875rem;
-        }
-
-        .info-box-title {
-            font-weight: 600;
-            margin-bottom: var(--spacing-xs);
         }
     </style>
 </head>
@@ -272,7 +215,7 @@
                     🚪 退出登录
                 </button>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">
-                    OpenList2STRM v1.1.1
+                    OpenList2STRM v1.2.0
                 </div>
             </div>
         </aside>
@@ -286,13 +229,16 @@
             <div id="page-dashboard" class="page">
                 <div class="page-header">
                     <h1 class="page-title">仪表盘</h1>
-                    <div class="action-buttons">
-                        <button class="btn btn-primary" onclick="triggerScan()">
-                            🔄 立即扫描
-                        </button>
-                        <button class="btn btn-secondary" onclick="triggerScan(null, true)">
-                            ⚡ 强制全量扫描
-                        </button>
+                    <div style="display: flex; align-items: center;">
+                        <button class="theme-toggle" id="theme-toggle" title="切换主题">🌓</button>
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" onclick="triggerScan()">
+                                🔄 立即扫描
+                            </button>
+                            <button class="btn btn-secondary" onclick="triggerScan(null, true)">
+                                ⚡ 强制全量扫描
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -346,20 +292,20 @@
             <div id="page-folders" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">监控文件夹</h1>
-                    <div class="action-buttons">
-                        <button class="btn btn-primary" onclick="openAddFolderModal()">
-                            ➕ 添加文件夹
-                        </button>
-                        <button class="btn btn-secondary" onclick="loadFolders()">
-                            🔄 刷新
-                        </button>
+                    <div style="display: flex; align-items: center;">
+                        <button class="theme-toggle theme-toggle-btn" title="切换主题">🌓</button>
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" onclick="openAddFolderModal()">
+                                ➕ 添加文件夹
+                            </button>
+                            <button class="btn btn-secondary" onclick="loadFolders()">
+                                🔄 刷新
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="info-box">
-                    <div class="info-box-title">💡 提示</div>
-                    <p>通过配置文件添加的文件夹无法删除，只能禁用。动态添加的文件夹可以删除但重启后不会保留。</p>
-                </div>
+
 
                 <div class="card">
                     <div class="folder-list" id="folders-list">
@@ -375,9 +321,12 @@
             <div id="page-tasks" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">任务管理</h1>
-                    <button class="btn btn-primary" onclick="openCreateTaskModal()">
-                        ➕ 创建任务
-                    </button>
+                    <div style="display: flex; align-items: center;">
+                        <button class="theme-toggle theme-toggle-btn" title="切换主题">🌓</button>
+                        <button class="btn btn-primary" onclick="openCreateTaskModal()">
+                            ➕ 创建任务
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Task List -->
@@ -409,6 +358,7 @@
             <div id="page-settings" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">设置</h1>
+                    <button class="theme-toggle theme-toggle-btn" title="切换主题">🌓</button>
                 </div>
 
                 <!-- STRM Settings -->

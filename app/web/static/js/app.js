@@ -1,5 +1,5 @@
 /**
- * OpenList2STRM - Web Management Application v1.1.1
+ * OpenList2STRM - Web Management Application v1.2.0
  */
 
 // API Configuration
@@ -14,6 +14,7 @@ const state = {
     history: [],
     isScanning: false,
     refreshInterval: null,
+    theme: localStorage.getItem('theme') || 'dark', // Default to dark
 };
 
 // ==================== Utility Functions ====================
@@ -119,6 +120,45 @@ function showToast(title, message, type = 'info') {
         toast.remove();
     }, 5000);
 }
+
+// ==================== Theme Switching ====================
+
+function initTheme() {
+    const theme = state.theme;
+    if (theme === 'light') {
+        document.body.classList.add('light-mode');
+    } else {
+        document.body.classList.remove('light-mode');
+    }
+    updateThemeToggleIcons();
+}
+
+function toggleTheme() {
+    if (document.body.classList.contains('light-mode')) {
+        document.body.classList.remove('light-mode');
+        state.theme = 'dark';
+    } else {
+        document.body.classList.add('light-mode');
+        state.theme = 'light';
+    }
+    localStorage.setItem('theme', state.theme);
+    updateThemeToggleIcons();
+}
+
+function updateThemeToggleIcons() {
+    const icons = document.querySelectorAll('.theme-toggle');
+    const isLight = document.body.classList.contains('light-mode');
+    icons.forEach(icon => {
+        icon.innerHTML = isLight ? '🌙' : '☀️';
+    });
+}
+
+// Global click handler for theme toggles (since they are in multiple page headers)
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.theme-toggle')) {
+        toggleTheme();
+    }
+});
 
 // ==================== Navigation ====================
 
@@ -1196,7 +1236,9 @@ function toggleMobileMenu() {
 
 // ==================== Initialization ====================
 
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize Application
+window.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     // Setup navigation
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
