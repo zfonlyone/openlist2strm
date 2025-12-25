@@ -346,9 +346,19 @@
             <div id="page-folders" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">监控文件夹</h1>
-                    <button class="btn btn-primary" onclick="loadFolders()">
-                        🔄 刷新
-                    </button>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="openAddFolderModal()">
+                            ➕ 添加文件夹
+                        </button>
+                        <button class="btn btn-secondary" onclick="loadFolders()">
+                            🔄 刷新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-box-title">💡 提示</div>
+                    <p>通过配置文件添加的文件夹无法删除，只能禁用。动态添加的文件夹可以删除但重启后不会保留。</p>
                 </div>
 
                 <div class="card">
@@ -527,7 +537,10 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="saveOpenListToken()">💾 保存 Token</button>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="saveOpenListToken()">💾 保存 Token</button>
+                        <button class="btn btn-secondary" onclick="testOpenListConnection()">📂 测试连接</button>
+                    </div>
                 </div>
 
                 <!-- Telegram Bot Settings -->
@@ -555,7 +568,10 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 保存 Telegram 设置</button>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 保存 Telegram 设置</button>
+                        <button class="btn btn-secondary" onclick="testTelegramConnection()">🤖 测试连接</button>
+                    </div>
                 </div>
 
                 <!-- Emby Integration -->
@@ -616,22 +632,24 @@
                     </div>
                 </div>
 
-                <!-- Connection Settings -->
+                <!-- Connection Testing -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">🔗 连接设置</span>
+                        <span class="card-title">🔗 连接测试</span>
                     </div>
 
-                    <div id="settings-display">
-                        <div class="empty-state">
-                            <div class="spinner"></div>
-                            <p>加载中...</p>
-                        </div>
-                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                        测试各服务的连接状态，确保配置正确。
+                    </p>
+
+                    <div id="connection-status"></div>
 
                     <div class="action-buttons" style="margin-top: var(--spacing-md);">
-                        <button class="btn btn-secondary" onclick="testConnection()">
-                            🔍 测试连接
+                        <button class="btn btn-secondary" onclick="testOpenListConnection()">
+                            📂 测试 OpenList
+                        </button>
+                        <button class="btn btn-secondary" onclick="testTelegramConnection()">
+                            🤖 测试 Telegram
                         </button>
                         <button class="btn btn-secondary" onclick="reloadConfig()">
                             🔄 重新加载配置
@@ -771,6 +789,29 @@
                 <button class="btn btn-primary" onclick="updateTask()"
                     style="width: 100%; margin-top: var(--spacing-md);">
                     保存修改
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Folder Modal -->
+    <div id="add-folder-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <span class="modal-title">➕ 添加监控文件夹</span>
+                <button class="modal-close" onclick="closeModal('add-folder-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">文件夹路径</label>
+                    <input type="text" class="form-input" id="new-folder-path" placeholder="例如: /115/电影">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                        输入 OpenList 中的完整路径
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="addFolder()"
+                    style="width: 100%; margin-top: var(--spacing-md);">
+                    添加文件夹
                 </button>
             </div>
         </div>

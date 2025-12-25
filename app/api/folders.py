@@ -99,11 +99,13 @@ async def update_folder(folder_path: str, request: UpdateFolderRequest):
     folder_path = "/" + folder_path.lstrip("/")
     
     if request.enabled is not None:
-        await cache.set_folder_enabled(folder_path, request.enabled)
+        # Use add_folder which handles upsert
+        await cache.add_folder(folder_path, request.enabled)
     
     return {
         "message": f"Folder updated: {folder_path}",
         "path": folder_path,
+        "enabled": request.enabled,
     }
 
 

@@ -205,13 +205,33 @@ async def import_config(file: UploadFile = File(...)):
 async def update_openlist_token(data: OpenListTokenUpdate):
     """Update OpenList API token"""
     config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
-    
-    if not Path(config_path).exists():
-        raise HTTPException(status_code=404, detail="Config file not found")
+    config_file = Path(config_path)
     
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
+        # Ensure config directory exists
+        config_dir = config_file.parent
+        if not config_dir.exists():
+            try:
+                config_dir.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cannot create config directory: {config_dir}. Check volume mount permissions."
+                )
+        
+        # Check if directory is writable
+        if not os.access(config_dir, os.W_OK):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Config directory is not writable: {config_dir}. Check Docker volume mount (remove :ro flag if present)."
+            )
+        
+        # Load existing config or create new
+        if config_file.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = yaml.safe_load(f) or {}
+        else:
+            config_data = {}
         
         # Update token
         if "openlist" not in config_data:
@@ -227,6 +247,13 @@ async def update_openlist_token(data: OpenListTokenUpdate):
         
         return {"message": "OpenList token updated", "success": True}
         
+    except HTTPException:
+        raise
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Permission denied writing to {config_path}. Check Docker volume mount."
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
 
@@ -323,6 +350,56 @@ async def update_telegram_settings(settings: TelegramSettings):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+
+
+@router.post("/telegram/test")
+async def test_telegram_connection():
+    """Test Telegram bot connection"""
+    import httpx
+    
+    config = get_config()
+    
+    if not config.telegram.token:
+        return {
+            "success": False,
+            "error": "未配置 Telegram Bot Token",
+        }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"https://api.telegram.org/bot{config.telegram.token}/getMe"
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("ok"):
+                    bot_info = data.get("result", {})
+                    return {
+                        "success": True,
+                        "bot_username": bot_info.get("username"),
+                        "bot_name": bot_info.get("first_name"),
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": data.get("description", "Unknown error"),
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "error": "连接超时",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 # ============ Emby Settings ============

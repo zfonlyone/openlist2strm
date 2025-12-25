@@ -41,11 +41,19 @@ async def list_tasks():
     
     Returns all tasks with their current status, next run time, etc.
     """
-    scheduler = get_scheduler_manager()
-    return {
-        "tasks": scheduler.get_all_tasks(),
-        "status": scheduler.status,
-    }
+    try:
+        scheduler = get_scheduler_manager()
+        tasks = scheduler.get_all_tasks()
+        return {
+            "tasks": tasks if tasks else [],
+            "status": scheduler.status,
+        }
+    except Exception as e:
+        # Return empty tasks list on error to prevent UI crash
+        return {
+            "tasks": [],
+            "status": {"running": False, "error": str(e)},
+        }
 
 
 @router.post("")

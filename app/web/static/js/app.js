@@ -1,5 +1,5 @@
 /**
- * OpenList2STRM - Web Management Application v1.1.0
+ * OpenList2STRM - Web Management Application v1.1.1
  */
 
 // API Configuration
@@ -312,35 +312,100 @@ async function loadFolders() {
                 <div class="empty-state">
                     <div class="empty-state-icon">📁</div>
                     <div class="empty-state-title">暂无监控文件夹</div>
-                    <p>请在配置文件中添加要监控的文件夹路径</p>
+                    <p>点击"添加文件夹"开始监控</p>
                 </div>
             `;
             return;
         }
 
-        container.innerHTML = state.folders.map(folder => `
+        container.innerHTML = state.folders.map(folder => {
+            const escapedPath = folder.path.replace(/'/g, "\\'");
+            return `
             <div class="folder-item">
-                <span class="folder-icon">📁</span>
+                <span class="folder-icon">${folder.enabled !== false ? '📁' : '📂'}</span>
                 <div class="folder-info">
                     <div class="folder-path">${folder.path}</div>
                     <div class="folder-meta">
                         <span>📄 ${folder.file_count || 0} 个文件</span>
                         <span>🕐 ${folder.last_scan ? formatDate(folder.last_scan) : '从未扫描'}</span>
+                        ${folder.from_config ? '<span class="badge badge-info">配置文件</span>' : '<span class="badge badge-warning">动态添加</span>'}
+                        ${folder.enabled === false ? '<span class="badge badge-error">已禁用</span>' : ''}
                     </div>
                 </div>
                 <div class="folder-actions">
-                    <button class="btn btn-primary btn-sm" onclick="scanFolder('${folder.path}')">
+                    <button class="btn btn-primary btn-sm" onclick="scanFolder('${escapedPath}')">
                         扫描
                     </button>
-                    <button class="btn btn-secondary btn-sm" onclick="browseFolder('${folder.path}')">
+                    <button class="btn btn-secondary btn-sm" onclick="browseFolder('${escapedPath}')">
                         浏览
                     </button>
+                    ${folder.enabled !== false
+                    ? `<button class="btn btn-warning btn-sm" onclick="toggleFolder('${escapedPath}', false)">禁用</button>`
+                    : `<button class="btn btn-success btn-sm" onclick="toggleFolder('${escapedPath}', true)">启用</button>`
+                }
+                    ${!folder.from_config
+                    ? `<button class="btn btn-danger btn-sm" onclick="deleteFolder('${escapedPath}')">删除</button>`
+                    : ''
+                }
                 </div>
             </div>
-        `).join('');
+        `}).join('');
 
     } catch (error) {
         showToast('错误', '无法加载文件夹列表', 'error');
+    }
+}
+
+function openAddFolderModal() {
+    document.getElementById('new-folder-path').value = '';
+    document.getElementById('add-folder-modal').classList.add('active');
+}
+
+async function addFolder() {
+    const path = document.getElementById('new-folder-path').value.trim();
+
+    if (!path) {
+        showToast('警告', '请输入文件夹路径', 'warning');
+        return;
+    }
+
+    // Ensure path starts with /
+    const normalizedPath = path.startsWith('/') ? path : '/' + path;
+
+    try {
+        await apiRequest('/folders', 'POST', {
+            path: normalizedPath,
+            enabled: true,
+        });
+        showToast('成功', '文件夹已添加', 'success');
+        closeModal('add-folder-modal');
+        await loadFolders();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function toggleFolder(path, enabled) {
+    try {
+        await apiRequest(`/folders/${encodeURIComponent(path.replace(/^\//, ''))}`, 'PUT', {
+            enabled: enabled,
+        });
+        showToast('成功', enabled ? '文件夹已启用' : '文件夹已禁用', 'success');
+        await loadFolders();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function deleteFolder(path) {
+    if (!confirm(`确定要删除文件夹 "${path}" 吗？`)) return;
+
+    try {
+        await apiRequest(`/folders/${encodeURIComponent(path.replace(/^\//, ''))}`, 'DELETE');
+        showToast('成功', '文件夹已删除', 'success');
+        await loadFolders();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
     }
 }
 
@@ -710,24 +775,6 @@ async function loadSettings() {
             document.getElementById('emby-library-id').value = settings.emby?.library_id || '';
         }
 
-        // Display connection settings
-        document.getElementById('settings-display').innerHTML = `
-            <div class="form-group">
-                <label class="form-label">OpenList 地址</label>
-                <input type="text" class="form-input" value="${settings.openlist?.host || ''}" readonly>
-            </div>
-            <div class="form-group">
-                <label class="form-label">输出路径</label>
-                <input type="text" class="form-input" value="${settings.paths?.output || '/strm'}" readonly>
-            </div>
-            <div class="form-group">
-                <label class="form-label">增量更新</label>
-                <input type="text" class="form-input" 
-                    value="${settings.incremental?.enabled ? '启用' : '禁用'} (${settings.incremental?.check_method || 'mtime'})" 
-                    readonly>
-            </div>
-        `;
-
     } catch (error) {
         showToast('错误', '无法加载设置', 'error');
     }
@@ -875,13 +922,50 @@ async function runCleanup() {
     }
 }
 
-async function testConnection() {
+async function testOpenListConnection() {
+    const statusDiv = document.getElementById('connection-status');
     try {
+        statusDiv.innerHTML = `<div class="badge badge-info">📂 正在测试 OpenList 连接...</div>`;
         const result = await apiRequest('/settings/openlist/test');
-        showToast('连接成功', `Provider: ${result.provider}, Items: ${result.items}`, 'success');
+        statusDiv.innerHTML = `
+            <div class="badge badge-success">✅ OpenList 连接成功</div>
+            <div style="margin-top: 8px; font-size: 0.875rem; color: var(--text-secondary);">
+                Provider: ${result.provider || 'N/A'} | 根目录项目数: ${result.items || 0}
+            </div>
+        `;
+        showToast('连接成功', 'OpenList 连接正常', 'success');
     } catch (error) {
+        statusDiv.innerHTML = `<div class="badge badge-error">❌ OpenList 连接失败: ${error.message}</div>`;
         showToast('连接失败', error.message, 'error');
     }
+}
+
+async function testTelegramConnection() {
+    const statusDiv = document.getElementById('connection-status');
+    try {
+        statusDiv.innerHTML = `<div class="badge badge-info">🤖 正在测试 Telegram 机器人...</div>`;
+        const result = await apiRequest('/settings/telegram/test', 'POST');
+        if (result.success) {
+            statusDiv.innerHTML = `
+                <div class="badge badge-success">✅ Telegram 机器人连接成功</div>
+                <div style="margin-top: 8px; font-size: 0.875rem; color: var(--text-secondary);">
+                    机器人名称: @${result.bot_username || 'unknown'}
+                </div>
+            `;
+            showToast('连接成功', `机器人 @${result.bot_username} 工作正常`, 'success');
+        } else {
+            statusDiv.innerHTML = `<div class="badge badge-error">❌ Telegram 连接失败: ${result.error}</div>`;
+            showToast('连接失败', result.error, 'error');
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<div class="badge badge-error">❌ Telegram 连接失败: ${error.message}</div>`;
+        showToast('连接失败', error.message, 'error');
+    }
+}
+
+// Legacy alias for testConnection
+async function testConnection() {
+    await testOpenListConnection();
 }
 
 async function clearCache() {
