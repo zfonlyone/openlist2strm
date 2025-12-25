@@ -1,7 +1,7 @@
 # OpenList2STRM
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.1.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.1.1-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/FastAPI-0.104+-green.svg" alt="FastAPI">
   <img src="https://img.shields.io/badge/Docker-Ready-blue.svg" alt="Docker">

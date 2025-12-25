@@ -1,5 +1,5 @@
 /**
- * OpenList2STRM - Web Management Application
+ * OpenList2STRM - Web Management Application v1.1.0
  */
 
 // API Configuration
@@ -10,6 +10,7 @@ const state = {
     currentPage: 'dashboard',
     status: null,
     folders: [],
+    tasks: [],
     history: [],
     isScanning: false,
     refreshInterval: null,
@@ -181,10 +182,12 @@ async function loadDashboard() {
 
         // Update scheduler status
         const scheduleInfo = document.getElementById('schedule-info');
-        if (status.scheduler?.running) {
+        const scheduler = status.scheduler || {};
+        if (scheduler.running) {
+            const activeTasks = scheduler.active_tasks || 0;
             scheduleInfo.innerHTML = `
                 <span class="badge badge-success">运行中</span>
-                <span>下次执行: ${formatDate(status.scheduler.next_run)}</span>
+                <span>活跃任务: ${activeTasks}</span>
             `;
         } else {
             scheduleInfo.innerHTML = `<span class="badge badge-warning">已暂停</span>`;
@@ -400,93 +403,251 @@ function closeModal(id) {
     document.getElementById(id).classList.remove('active');
 }
 
-// ==================== Tasks ====================
+// ==================== Tasks (v1.1.0 Multi-Task) ====================
 
 async function loadTasks() {
     try {
-        // Load schedule
-        const schedule = await apiRequest('/tasks/schedule');
+        // Load tasks from new API
+        const result = await apiRequest('/tasks');
+        state.tasks = result.tasks || [];
 
-        document.getElementById('schedule-cron').value = schedule.cron || '';
-        document.getElementById('schedule-status').innerHTML = schedule.running
-            ? '<span class="badge badge-success">运行中</span>'
-            : '<span class="badge badge-warning">已暂停</span>';
+        const container = document.getElementById('tasks-list');
 
-        if (schedule.next_run) {
-            document.getElementById('schedule-next').textContent = formatDate(schedule.next_run);
+        if (state.tasks.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏰</div>
+                    <div class="empty-state-title">暂无定时任务</div>
+                    <p>点击"创建任务"添加新的定时任务</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = state.tasks.map(task => `
+                <div class="task-item">
+                    <div class="task-item-header">
+                        <span class="task-item-name">${task.name || 'Unnamed Task'}</span>
+                        <div>
+                            ${task.enabled
+                    ? (task.paused
+                        ? '<span class="badge badge-warning">已暂停</span>'
+                        : '<span class="badge badge-success">运行中</span>')
+                    : '<span class="badge badge-error">已停用</span>'}
+                            ${task.one_time ? '<span class="badge badge-info">一次性</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="task-item-info">
+                        <span>📁 ${task.folder || '所有文件夹'}</span>
+                        <span>⏰ ${task.cron}</span>
+                        <span>🕐 上次: ${task.last_run ? formatDate(task.last_run) : '从未'}</span>
+                        <span>📅 下次: ${task.next_run ? formatDate(task.next_run) : '-'}</span>
+                    </div>
+                    <div class="task-item-actions">
+                        <button class="btn btn-primary btn-sm" onclick="runTaskNow('${task.id}')">▶️ 立即执行</button>
+                        <button class="btn btn-secondary btn-sm" onclick="openEditTaskModal('${task.id}')">✏️ 编辑</button>
+                        ${task.enabled
+                    ? (task.paused
+                        ? `<button class="btn btn-success btn-sm" onclick="resumeTask('${task.id}')">▶️ 恢复</button>`
+                        : `<button class="btn btn-warning btn-sm" onclick="pauseTask('${task.id}')">⏸️ 暂停</button>`)
+                    : `<button class="btn btn-success btn-sm" onclick="enableTask('${task.id}')">✅ 启用</button>`}
+                        ${task.enabled
+                    ? `<button class="btn btn-secondary btn-sm" onclick="disableTask('${task.id}')">❌ 停用</button>`
+                    : ''}
+                        <button class="btn btn-danger btn-sm" onclick="deleteTask('${task.id}')">🗑️ 删除</button>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        // Load history
-        const historyResult = await apiRequest('/scan/history');
-        state.history = historyResult.history || [];
+        // Load scan history
+        try {
+            const historyResult = await apiRequest('/scan/history');
+            state.history = historyResult.history || [];
 
-        const historyContainer = document.getElementById('scan-history');
+            const historyContainer = document.getElementById('scan-history');
 
-        if (state.history.length === 0) {
-            historyContainer.innerHTML = '<p class="empty-state">暂无扫描历史</p>';
-            return;
+            if (state.history.length === 0) {
+                historyContainer.innerHTML = '<p class="empty-state">暂无扫描历史</p>';
+            } else {
+                historyContainer.innerHTML = `
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>文件夹</th>
+                                    <th>状态</th>
+                                    <th>扫描</th>
+                                    <th>新建</th>
+                                    <th>更新</th>
+                                    <th>时间</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${state.history.map(h => `
+                                    <tr>
+                                        <td style="font-family: var(--font-mono); font-size: 0.75rem;">${h.folder}</td>
+                                        <td>
+                                            <span class="badge badge-${h.status === 'completed' ? 'success' : 'error'}">
+                                                ${h.status}
+                                            </span>
+                                        </td>
+                                        <td>${h.files_scanned}</td>
+                                        <td style="color: var(--success);">${h.files_created}</td>
+                                        <td style="color: var(--info);">${h.files_updated}</td>
+                                        <td>${formatDate(h.end_time)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.log('No scan history available');
         }
-
-        historyContainer.innerHTML = `
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>文件夹</th>
-                            <th>状态</th>
-                            <th>扫描</th>
-                            <th>新建</th>
-                            <th>更新</th>
-                            <th>时间</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${state.history.map(h => `
-                            <tr>
-                                <td style="font-family: var(--font-mono); font-size: 0.75rem;">${h.folder}</td>
-                                <td>
-                                    <span class="badge badge-${h.status === 'completed' ? 'success' : 'error'}">
-                                        ${h.status}
-                                    </span>
-                                </td>
-                                <td>${h.files_scanned}</td>
-                                <td style="color: var(--success);">${h.files_created}</td>
-                                <td style="color: var(--info);">${h.files_updated}</td>
-                                <td>${formatDate(h.end_time)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
 
     } catch (error) {
         showToast('错误', '无法加载任务信息', 'error');
+        document.getElementById('tasks-list').innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">❌</div>
+                <div class="empty-state-title">加载失败</div>
+                <p>${error.message}</p>
+            </div>
+        `;
     }
 }
 
-async function updateSchedule() {
-    const cron = document.getElementById('schedule-cron').value;
+function openCreateTaskModal() {
+    document.getElementById('new-task-name').value = '';
+    document.getElementById('new-task-folder').value = '';
+    document.getElementById('new-task-cron').value = '0 2 * * *';
+    document.getElementById('new-task-one-time').checked = false;
+    document.getElementById('create-task-modal').classList.add('active');
+}
+
+async function createTask() {
+    const name = document.getElementById('new-task-name').value.trim();
+    const folder = document.getElementById('new-task-folder').value.trim();
+    const cron = document.getElementById('new-task-cron').value.trim();
+    const oneTime = document.getElementById('new-task-one-time').checked;
+
+    if (!name) {
+        showToast('警告', '请输入任务名称', 'warning');
+        return;
+    }
+
+    if (!cron) {
+        showToast('警告', '请输入 Cron 表达式', 'warning');
+        return;
+    }
 
     try {
-        await apiRequest('/tasks/schedule', 'PUT', { cron });
-        showToast('成功', '定时任务已更新', 'success');
+        await apiRequest('/tasks', 'POST', {
+            name,
+            folder,
+            cron,
+            enabled: true,
+            one_time: oneTime,
+        });
+        showToast('成功', '任务已创建', 'success');
+        closeModal('create-task-modal');
         await loadTasks();
     } catch (error) {
         showToast('错误', error.message, 'error');
     }
 }
 
-async function toggleScheduler(pause) {
+function openEditTaskModal(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    document.getElementById('edit-task-id').value = taskId;
+    document.getElementById('edit-task-name').value = task.name || '';
+    document.getElementById('edit-task-folder').value = task.folder || '';
+    document.getElementById('edit-task-cron').value = task.cron || '';
+    document.getElementById('edit-task-one-time').checked = task.one_time || false;
+    document.getElementById('edit-task-modal').classList.add('active');
+}
+
+async function updateTask() {
+    const taskId = document.getElementById('edit-task-id').value;
+    const name = document.getElementById('edit-task-name').value.trim();
+    const folder = document.getElementById('edit-task-folder').value.trim();
+    const cron = document.getElementById('edit-task-cron').value.trim();
+    const oneTime = document.getElementById('edit-task-one-time').checked;
+
     try {
-        if (pause) {
-            await apiRequest('/tasks/schedule/pause', 'POST');
-            showToast('已暂停', '定时任务已暂停', 'info');
-        } else {
-            await apiRequest('/tasks/schedule/resume', 'POST');
-            showToast('已恢复', '定时任务已恢复', 'success');
-        }
+        await apiRequest(`/tasks/${taskId}`, 'PUT', {
+            name,
+            folder,
+            cron,
+            one_time: oneTime,
+        });
+        showToast('成功', '任务已更新', 'success');
+        closeModal('edit-task-modal');
         await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function deleteTask(taskId) {
+    if (!confirm('确定要删除此任务吗？')) return;
+
+    try {
+        await apiRequest(`/tasks/${taskId}`, 'DELETE');
+        showToast('成功', '任务已删除', 'success');
+        await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function enableTask(taskId) {
+    try {
+        await apiRequest(`/tasks/${taskId}/enable`, 'POST');
+        showToast('成功', '任务已启用', 'success');
+        await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function disableTask(taskId) {
+    try {
+        await apiRequest(`/tasks/${taskId}/disable`, 'POST');
+        showToast('成功', '任务已停用', 'success');
+        await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function pauseTask(taskId) {
+    try {
+        await apiRequest(`/tasks/${taskId}/pause`, 'POST');
+        showToast('成功', '任务已暂停', 'success');
+        await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function resumeTask(taskId) {
+    try {
+        await apiRequest(`/tasks/${taskId}/resume`, 'POST');
+        showToast('成功', '任务已恢复', 'success');
+        await loadTasks();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function runTaskNow(taskId) {
+    try {
+        await apiRequest(`/tasks/${taskId}/run`, 'POST');
+        showToast('成功', '任务执行已开始', 'success');
+        await loadDashboard();
     } catch (error) {
         showToast('错误', error.message, 'error');
     }
@@ -503,7 +664,53 @@ async function loadSettings() {
         document.getElementById('qos-concurrent').value = settings.qos?.max_concurrent || 3;
         document.getElementById('qos-interval').value = settings.qos?.interval || 200;
 
-        // Display other settings
+        // Enhanced QoS settings (v1.1.0)
+        if (document.getElementById('qos-threading-mode')) {
+            document.getElementById('qos-threading-mode').value = settings.qos?.threading_mode || 'multi';
+        }
+        if (document.getElementById('qos-thread-pool')) {
+            document.getElementById('qos-thread-pool').value = settings.qos?.thread_pool_size || 4;
+        }
+
+        // STRM settings
+        if (document.getElementById('strm-mode')) {
+            document.getElementById('strm-mode').value = settings.strm?.mode || 'path';
+        }
+        if (document.getElementById('strm-url-encode')) {
+            document.getElementById('strm-url-encode').checked = settings.strm?.url_encode !== false;
+        }
+        if (document.getElementById('strm-output-path')) {
+            document.getElementById('strm-output-path').value = settings.strm?.output_path || '/strm';
+        }
+
+        // Scan settings
+        if (document.getElementById('scan-mode')) {
+            document.getElementById('scan-mode').value = settings.scan?.mode || 'incremental';
+        }
+        if (document.getElementById('scan-data-source')) {
+            document.getElementById('scan-data-source').value = settings.scan?.data_source || 'cache';
+        }
+
+        // Telegram settings
+        if (document.getElementById('tg-enabled')) {
+            document.getElementById('tg-enabled').checked = settings.telegram?.enabled || false;
+        }
+        if (document.getElementById('tg-chat-id')) {
+            document.getElementById('tg-chat-id').value = settings.telegram?.chat_id || '';
+        }
+
+        // Emby settings
+        if (document.getElementById('emby-enabled')) {
+            document.getElementById('emby-enabled').checked = settings.emby?.enabled || false;
+        }
+        if (document.getElementById('emby-host')) {
+            document.getElementById('emby-host').value = settings.emby?.host || '';
+        }
+        if (document.getElementById('emby-library-id')) {
+            document.getElementById('emby-library-id').value = settings.emby?.library_id || '';
+        }
+
+        // Display connection settings
         document.getElementById('settings-display').innerHTML = `
             <div class="form-group">
                 <label class="form-label">OpenList 地址</label>
@@ -516,13 +723,7 @@ async function loadSettings() {
             <div class="form-group">
                 <label class="form-label">增量更新</label>
                 <input type="text" class="form-input" 
-                    value="${settings.incremental?.enabled ? '启用' : '禁用'} (${settings.incremental?.check_method})" 
-                    readonly>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Telegram 机器人</label>
-                <input type="text" class="form-input" 
-                    value="${settings.telegram?.enabled ? '已启用' : '未启用'}" 
+                    value="${settings.incremental?.enabled ? '启用' : '禁用'} (${settings.incremental?.check_method || 'mtime'})" 
                     readonly>
             </div>
         `;
@@ -544,6 +745,131 @@ async function updateQoS() {
             interval,
         });
         showToast('成功', 'QoS 设置已更新', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function saveStrmSettings() {
+    const mode = document.getElementById('strm-mode').value;
+    const urlEncode = document.getElementById('strm-url-encode').checked;
+    const outputPath = document.getElementById('strm-output-path').value;
+
+    try {
+        await apiRequest('/settings/strm', 'PUT', {
+            mode,
+            url_encode: urlEncode,
+            output_path: outputPath,
+        });
+        showToast('成功', 'STRM 设置已保存', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function saveScanSettings() {
+    const mode = document.getElementById('scan-mode').value;
+    const dataSource = document.getElementById('scan-data-source').value;
+
+    try {
+        await apiRequest('/settings/scan', 'PUT', {
+            mode,
+            data_source: dataSource,
+        });
+        showToast('成功', '扫描设置已保存', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function saveTelegramSettings() {
+    const enabled = document.getElementById('tg-enabled').checked;
+    const token = document.getElementById('tg-token').value;
+    const chatId = document.getElementById('tg-chat-id').value;
+
+    try {
+        await apiRequest('/settings/telegram', 'PUT', {
+            enabled,
+            token: token || undefined,
+            chat_id: chatId || undefined,
+        });
+        showToast('成功', 'Telegram 设置已保存', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function saveEmbySettings() {
+    const enabled = document.getElementById('emby-enabled').checked;
+    const host = document.getElementById('emby-host').value;
+    const apiKey = document.getElementById('emby-api-key').value;
+    const libraryId = document.getElementById('emby-library-id').value;
+
+    try {
+        await apiRequest('/settings/emby', 'PUT', {
+            enabled,
+            host: host || undefined,
+            api_key: apiKey || undefined,
+            library_id: libraryId || undefined,
+            notify_on_scan: true,
+        });
+        showToast('成功', 'Emby 设置已保存', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function testEmbyConnection() {
+    try {
+        showToast('测试中', '正在连接 Emby...', 'info');
+        const result = await apiRequest('/settings/emby/test', 'POST');
+        if (result.success) {
+            showToast('连接成功', `服务器: ${result.server_name} (v${result.version})`, 'success');
+        } else {
+            showToast('连接失败', result.error, 'error');
+        }
+    } catch (error) {
+        showToast('连接失败', error.message, 'error');
+    }
+}
+
+async function previewCleanup() {
+    try {
+        showToast('扫描中', '正在检测待清理项...', 'info');
+        const result = await apiRequest('/cleanup/preview', 'POST');
+
+        document.getElementById('cleanup-stats').innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--spacing-sm);">
+                <div style="text-align: center; padding: var(--spacing-sm); background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+                    <div style="font-size: 1.5rem; font-weight: 600;">${result.broken_symlinks?.length || 0}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">无效软链接</div>
+                </div>
+                <div style="text-align: center; padding: var(--spacing-sm); background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+                    <div style="font-size: 1.5rem; font-weight: 600;">${result.empty_dirs?.length || 0}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">空目录</div>
+                </div>
+                <div style="text-align: center; padding: var(--spacing-sm); background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+                    <div style="font-size: 1.5rem; font-weight: 600;">${result.total_issues || 0}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">总计</div>
+                </div>
+            </div>
+        `;
+
+        showToast('扫描完成', `发现 ${result.total_issues || 0} 个待清理项`, 'info');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+async function runCleanup() {
+    if (!confirm('确定要执行清理吗？这将删除无效软链接和空目录。')) {
+        return;
+    }
+
+    try {
+        const result = await apiRequest('/cleanup', 'POST', { dry_run: false });
+        showToast('清理完成', `已删除 ${result.deleted_count || 0} 项`, 'success');
+        await previewCleanup();
     } catch (error) {
         showToast('错误', error.message, 'error');
     }

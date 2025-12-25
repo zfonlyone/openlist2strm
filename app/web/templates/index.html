@@ -89,11 +89,150 @@
             flex-wrap: wrap;
         }
 
-        /* QoS Form Grid */
+        /* Grid layouts */
         .qos-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: var(--spacing-md);
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+        }
+
+        /* Task Item Styles */
+        .task-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .task-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .task-item-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .task-item-info {
+            display: flex;
+            gap: var(--spacing-md);
+            flex-wrap: wrap;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .task-item-actions {
+            display: flex;
+            gap: var(--spacing-xs);
+            margin-top: var(--spacing-sm);
+        }
+
+        /* Settings Section */
+        .settings-section {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .settings-section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-tertiary);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        input:checked+.toggle-slider {
+            background: var(--primary);
+        }
+
+        input:checked+.toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Cron Help Box */
+        .cron-help {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            margin-top: var(--spacing-sm);
+            font-size: 0.75rem;
+        }
+
+        .cron-help-title {
+            font-weight: 600;
+            margin-bottom: var(--spacing-xs);
+            color: var(--text-primary);
+        }
+
+        .cron-example {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            color: var(--text-secondary);
+        }
+
+        .cron-example code {
+            font-family: var(--font-mono);
+            color: var(--primary);
+        }
+
+        /* Info Box */
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+            font-size: 0.875rem;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            margin-bottom: var(--spacing-xs);
         }
     </style>
 </head>
@@ -133,7 +272,7 @@
                     🚪 退出登录
                 </button>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">
-                    OpenList2STRM v1.0.0
+                    OpenList2STRM v1.1.1
                 </div>
             </div>
         </aside>
@@ -222,39 +361,44 @@
                 </div>
             </div>
 
-            <!-- Tasks Page -->
+            <!-- Tasks Page (v1.1.0 Multi-Task) -->
             <div id="page-tasks" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">任务管理</h1>
+                    <button class="btn btn-primary" onclick="openCreateTaskModal()">
+                        ➕ 创建任务
+                    </button>
                 </div>
 
-                <!-- Schedule Settings -->
+                <!-- Task List -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">⏰ 定时任务设置</span>
-                        <span id="schedule-status"></span>
+                        <span class="card-title">📋 定时任务列表</span>
+                        <button class="btn btn-secondary btn-sm" onclick="loadTasks()">🔄 刷新</button>
                     </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Cron 表达式</label>
-                        <div style="display: flex; gap: var(--spacing-sm);">
-                            <input type="text" class="form-input" id="schedule-cron" placeholder="0 2 * * *"
-                                style="flex: 1;">
-                            <button class="btn btn-primary" onclick="updateSchedule()">保存</button>
-                        </div>
-                        <div style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">
-                            格式: 分 时 日 月 周 (例: "0 2 * * *" = 每天凌晨2点)
+                    <div id="tasks-list">
+                        <div class="empty-state">
+                            <div class="spinner"></div>
+                            <p>加载中...</p>
                         </div>
                     </div>
+                </div>
 
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <span style="color: var(--text-secondary);">下次执行:</span>
-                            <span id="schedule-next">-</span>
-                        </div>
-                        <div class="action-buttons">
-                            <button class="btn btn-secondary" onclick="toggleScheduler(true)">暂停</button>
-                            <button class="btn btn-success" onclick="toggleScheduler(false)">恢复</button>
+                <!-- Cron Expression Help -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">💡 Cron 表达式帮助</span>
+                    </div>
+                    <div class="cron-help">
+                        <div class="cron-help-title">格式: 分 时 日 月 周</div>
+                        <div class="cron-example"><code>*/30 * * * *</code><span>每 30 分钟</span></div>
+                        <div class="cron-example"><code>0 * * * *</code><span>每小时整点</span></div>
+                        <div class="cron-example"><code>0 2 * * *</code><span>每天凌晨 2 点</span></div>
+                        <div class="cron-example"><code>0 2 * * 0</code><span>每周日凌晨 2 点</span></div>
+                        <div class="cron-example"><code>0 2 1 * *</code><span>每月 1 号凌晨 2 点</span></div>
+                        <div class="cron-example"><code>0 4 * * 1-5</code><span>工作日凌晨 4 点</span></div>
+                        <div style="margin-top: var(--spacing-sm); color: var(--text-muted);">
+                            <strong>特殊符号:</strong> * 任意值, */n 每隔n, a-b 范围, a,b 列表
                         </div>
                     </div>
                 </div>
@@ -263,21 +407,69 @@
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">📜 扫描历史</span>
-                        <button class="btn btn-secondary btn-sm" onclick="loadTasks()">刷新</button>
                     </div>
                     <div id="scan-history">
-                        <div class="empty-state">
-                            <div class="spinner"></div>
-                            <p>加载中...</p>
-                        </div>
+                        <p class="empty-state">暂无扫描历史</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Settings Page -->
+            <!-- Settings Page (v1.1.0 Enhanced) -->
             <div id="page-settings" class="page hidden">
                 <div class="page-header">
                     <h1 class="page-title">设置</h1>
+                </div>
+
+                <!-- STRM Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🎬 STRM 生成设置</span>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">生成模式</label>
+                            <select class="form-input" id="strm-mode">
+                                <option value="path">路径模式 (本地WebDAV)</option>
+                                <option value="direct_link">直链模式 (远程访问)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">URL 编码</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="strm-url-encode" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">输出路径</label>
+                            <input type="text" class="form-input" id="strm-output-path" value="/strm">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveStrmSettings()">💾 保存 STRM 设置</button>
+                </div>
+
+                <!-- Scan Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔍 扫描模式设置</span>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">扫描模式</label>
+                            <select class="form-input" id="scan-mode">
+                                <option value="incremental">增量更新 (仅处理新增/修改)</option>
+                                <option value="full">全量扫描 (重新处理全部)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">数据源</label>
+                            <select class="form-input" id="scan-data-source">
+                                <option value="cache">读取缓存 (更快)</option>
+                                <option value="realtime">实时读取 (更准确)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveScanSettings()">💾 保存扫描设置</button>
                 </div>
 
                 <!-- QoS Settings -->
@@ -300,6 +492,17 @@
                             <label class="form-label">请求间隔 (ms)</label>
                             <input type="number" class="form-input" id="qos-interval" min="0" max="5000" step="50"
                                 value="200">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">线程模式</label>
+                            <select class="form-input" id="qos-threading-mode">
+                                <option value="multi">多线程</option>
+                                <option value="single">单线程</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">线程池大小</label>
+                            <input type="number" class="form-input" id="qos-thread-pool" min="1" max="16" value="4">
                         </div>
                     </div>
 
@@ -325,6 +528,92 @@
                     </div>
 
                     <button class="btn btn-primary" onclick="saveOpenListToken()">💾 保存 Token</button>
+                </div>
+
+                <!-- Telegram Bot Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🤖 Telegram 机器人</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">启用 Telegram 机器人</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="tg-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">Bot Token</label>
+                            <input type="password" class="form-input" id="tg-token" placeholder="从 @BotFather 获取">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Chat ID (用户ID)</label>
+                            <input type="text" class="form-input" id="tg-chat-id" placeholder="您的 Telegram 用户 ID">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 保存 Telegram 设置</button>
+                </div>
+
+                <!-- Emby Integration -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📺 Emby 媒体库通知</span>
+                    </div>
+
+                    <div class="info-box">
+                        <div class="info-box-title">💡 获取 API Key</div>
+                        Emby：设置 → 高级 → API 密钥 → 新建应用程序
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">启用 Emby 通知</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="emby-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">Emby 地址</label>
+                            <input type="text" class="form-input" id="emby-host" placeholder="http://emby:8096">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API Key</label>
+                            <input type="password" class="form-input" id="emby-api-key" placeholder="Emby API Key">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">媒体库 ID (留空=全部)</label>
+                            <input type="text" class="form-input" id="emby-library-id" placeholder="可选">
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="saveEmbySettings()">💾 保存 Emby 设置</button>
+                        <button class="btn btn-secondary" onclick="testEmbyConnection()">🔗 测试连接</button>
+                    </div>
+                </div>
+
+                <!-- Cleanup -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🧹 清理功能</span>
+                    </div>
+
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                        清理无效软链接和空目录，保持本地与云端一致性。
+                    </p>
+
+                    <div id="cleanup-stats" style="margin-bottom: var(--spacing-md);"></div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" onclick="previewCleanup()">👁️ 预览清理</button>
+                        <button class="btn btn-danger" onclick="runCleanup()">🗑️ 执行清理</button>
+                    </div>
                 </div>
 
                 <!-- Connection Settings -->
@@ -406,6 +695,83 @@
                 <button class="modal-close" onclick="closeModal('browse-modal')">&times;</button>
             </div>
             <div class="modal-body" id="browse-content">
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Task Modal -->
+    <div id="create-task-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <span class="modal-title">➕ 创建定时任务</span>
+                <button class="modal-close" onclick="closeModal('create-task-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">任务名称</label>
+                    <input type="text" class="form-input" id="new-task-name" placeholder="例如: 电影扫描">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">监控文件夹</label>
+                    <input type="text" class="form-input" id="new-task-folder" placeholder="例如: /115/电影">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cron 表达式</label>
+                    <input type="text" class="form-input" id="new-task-cron" placeholder="0 2 * * *" value="0 2 * * *">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                        格式: 分 时 日 月 周 (例: "0 2 * * *" = 每天凌晨2点)
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">一次性任务</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="new-task-one-time">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px;">
+                        运行一次后自动停用
+                    </span>
+                </div>
+                <button class="btn btn-primary" onclick="createTask()"
+                    style="width: 100%; margin-top: var(--spacing-md);">
+                    创建任务
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="edit-task-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <span class="modal-title">✏️ 编辑任务</span>
+                <button class="modal-close" onclick="closeModal('edit-task-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-task-id">
+                <div class="form-group">
+                    <label class="form-label">任务名称</label>
+                    <input type="text" class="form-input" id="edit-task-name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">监控文件夹</label>
+                    <input type="text" class="form-input" id="edit-task-folder">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cron 表达式</label>
+                    <input type="text" class="form-input" id="edit-task-cron">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">一次性任务</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="edit-task-one-time">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="updateTask()"
+                    style="width: 100%; margin-top: var(--spacing-md);">
+                    保存修改
+                </button>
             </div>
         </div>
     </div>

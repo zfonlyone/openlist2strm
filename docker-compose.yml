@@ -8,9 +8,9 @@ services:
     ports:
       - "127.0.0.1:9527:9527"
     volumes:
-      - ./config:/config:ro
-      - ./data:/data
-      - /etc/media-server/movie/strm:/strm
+      - ./config:/config:shared
+      - ./data:/data:shared
+      - ./movie/strm:/strm:shared
     environment:
       - TZ=Asia/Shanghai
       - CONFIG_PATH=/config/config.yml
