@@ -27,11 +27,11 @@ COPY app/ ./app/
 # Create directories
 RUN mkdir -p /config /strm /data
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app /config /strm /data
+# Create non-root user (kept for manual specification if needed)
+# But run as root by default to match host volume permissions
+RUN useradd -m -u 1000 appuser
 
-USER appuser
+# USER appuser
 
 # Expose port
 EXPOSE 9527

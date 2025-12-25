@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OpenList2STRM",
     description="轻量级 OpenList 到 STRM 文件转换工具",
-    version="1.1.1",
+    version="1.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,

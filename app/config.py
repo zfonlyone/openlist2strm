@@ -1,4 +1,4 @@
-"""Configuration management for OpenList2STRM v1.1.0"""
+"""Configuration management for OpenList2STRM v1.2.0"""
 
 import os
 import uuid
@@ -551,11 +551,14 @@ class Config:
             with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True)
             
-            return True
+            # Verify saved
+            if path.exists() and path.stat().st_size > 0:
+                print(f"Config saved successfully to {path}")
+                return True
+            return False
         except Exception as e:
-            error_msg = f"Failed to save config to {config_path}: {str(e)}"
+            error_msg = f"Critical Error: Failed to save config to {config_path}: {str(e)}"
             print(error_msg)
-            # Re-raise or keep returning False? Let's return False and let the API handle the message
             return False
 
 
