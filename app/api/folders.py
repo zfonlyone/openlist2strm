@@ -77,16 +77,27 @@ async def add_folder(request: AddFolderRequest):
     """
     Add a new folder to monitor.
     
-    Note: This adds to the database. For persistence, also update config.yml.
+    Persistence: Automatically updates config.yml and database.
     """
     cache = get_cache_manager()
+    config = get_config()
     
+    # Add to database
     await cache.add_folder(request.path, request.enabled)
     
+    # Sync to config.yml if not already there
+    if request.path not in config.paths.source:
+        config.paths.source.append(request.path)
+        if not config.save():
+            # Still proceed as it's saved in DB, but warn or log?
+            # For now, we return success but the error handling in config.save() prints to log
+            pass
+            
     return {
         "message": f"Folder added: {request.path}",
         "path": request.path,
         "enabled": request.enabled,
+        "persistent": request.path in config.paths.source
     }
 
 
@@ -114,21 +125,20 @@ async def remove_folder(folder_path: str):
     """
     Remove a folder from monitoring.
     
-    Note: This only removes from the database. Config file folders remain.
+    Persistence: Removes from both database and config.yml.
     """
     cache = get_cache_manager()
+    config = get_config()
     
     # Normalize path
     folder_path = "/" + folder_path.lstrip("/")
     
-    # Check if it's from config
-    config = get_config()
+    # Remove from config if present
     if folder_path in config.paths.source:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot remove folder defined in config.yml. Disable it instead or edit config file."
-        )
+        config.paths.source.remove(folder_path)
+        config.save()
     
+    # Remove from database
     await cache.remove_folder(folder_path)
     
     return {

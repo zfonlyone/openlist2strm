@@ -394,25 +394,6 @@
                     </div>
                 </div>
 
-                <!-- Cron Expression Help -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">💡 Cron 表达式帮助</span>
-                    </div>
-                    <div class="cron-help">
-                        <div class="cron-help-title">格式: 分 时 日 月 周</div>
-                        <div class="cron-example"><code>*/30 * * * *</code><span>每 30 分钟</span></div>
-                        <div class="cron-example"><code>0 * * * *</code><span>每小时整点</span></div>
-                        <div class="cron-example"><code>0 2 * * *</code><span>每天凌晨 2 点</span></div>
-                        <div class="cron-example"><code>0 2 * * 0</code><span>每周日凌晨 2 点</span></div>
-                        <div class="cron-example"><code>0 2 1 * *</code><span>每月 1 号凌晨 2 点</span></div>
-                        <div class="cron-example"><code>0 4 * * 1-5</code><span>工作日凌晨 4 点</span></div>
-                        <div style="margin-top: var(--spacing-sm); color: var(--text-muted);">
-                            <strong>特殊符号:</strong> * 任意值, */n 每隔n, a-b 范围, a,b 列表
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Scan History -->
                 <div class="card">
                     <div class="card-header">
@@ -446,9 +427,11 @@
                         <div class="form-group">
                             <label class="form-label">URL 编码</label>
                             <label class="toggle-switch">
-                                <input type="checkbox" id="strm-url-encode" checked>
+                                <input type="checkbox" id="strm-url-encode" onchange="handleUrlEncodeChange(this)">
                                 <span class="toggle-slider"></span>
                             </label>
+                            <span id="strm-url-encode-status"
+                                style="font-size: 0.875rem; color: var(--text-secondary); margin-left: 8px;"></span>
                         </div>
                         <div class="form-group">
                             <label class="form-label">输出路径</label>
@@ -552,9 +535,11 @@
                     <div class="form-group">
                         <label class="form-label">启用 Telegram 机器人</label>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="tg-enabled">
+                            <input type="checkbox" id="tg-enabled" onchange="handleTgToggle(this)">
                             <span class="toggle-slider"></span>
                         </label>
+                        <span id="tg-enabled-status"
+                            style="font-size: 0.875rem; color: var(--text-secondary); margin-left: 8px;"></span>
                     </div>
 
                     <div class="settings-grid">
@@ -588,9 +573,11 @@
                     <div class="form-group">
                         <label class="form-label">启用 Emby 通知</label>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="emby-enabled">
+                            <input type="checkbox" id="emby-enabled" onchange="handleEmbyToggle(this)">
                             <span class="toggle-slider"></span>
                         </label>
+                        <span id="emby-enabled-status"
+                            style="font-size: 0.875rem; color: var(--text-secondary); margin-left: 8px;"></span>
                     </div>
 
                     <div class="settings-grid">
@@ -734,8 +721,26 @@
                     <input type="text" class="form-input" id="new-task-folder" placeholder="例如: /115/电影">
                 </div>
                 <div class="form-group">
+                    <label class="form-label">调度方式</label>
+                    <select class="form-input" id="new-task-schedule-type" onchange="toggleScheduleInputs('new')">
+                        <option value="interval">每隔一段时间 (Interval)</option>
+                        <option value="daily" selected>每天定时 (Daily)</option>
+                        <option value="once">立即执行一次 (Once)</option>
+                        <option value="cron">高级 Cron 表达式</option>
+                    </select>
+                </div>
+                <!-- Dynamic Inputs -->
+                <div id="new-task-interval-group" class="form-group hidden">
+                    <label class="form-label">时间间隔 (分钟)</label>
+                    <input type="number" class="form-input" id="new-task-interval" value="60" min="1">
+                </div>
+                <div id="new-task-daily-group" class="form-group">
+                    <label class="form-label">执行时间</label>
+                    <input type="time" class="form-input" id="new-task-time" value="04:00">
+                </div>
+                <div id="new-task-cron-group" class="form-group hidden">
                     <label class="form-label">Cron 表达式</label>
-                    <input type="text" class="form-input" id="new-task-cron" placeholder="0 2 * * *" value="0 2 * * *">
+                    <input type="text" class="form-input" id="new-task-cron" placeholder="0 2 * * *">
                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
                         格式: 分 时 日 月 周 (例: "0 2 * * *" = 每天凌晨2点)
                     </div>
@@ -776,6 +781,23 @@
                     <input type="text" class="form-input" id="edit-task-folder">
                 </div>
                 <div class="form-group">
+                    <label class="form-label">调度方式</label>
+                    <select class="form-input" id="edit-task-schedule-type" onchange="toggleScheduleInputs('edit')">
+                        <option value="interval">每隔一段时间 (Interval)</option>
+                        <option value="daily">每天定时 (Daily)</option>
+                        <option value="once">立即执行一次 (Once)</option>
+                        <option value="cron">高级 Cron 表达式</option>
+                    </select>
+                </div>
+                <div id="edit-task-interval-group" class="form-group hidden">
+                    <label class="form-label">时间间隔 (分钟)</label>
+                    <input type="number" class="form-input" id="edit-task-interval" min="1">
+                </div>
+                <div id="edit-task-daily-group" class="form-group hidden">
+                    <label class="form-label">执行时间</label>
+                    <input type="time" class="form-input" id="edit-task-time">
+                </div>
+                <div id="edit-task-cron-group" class="form-group hidden">
                     <label class="form-label">Cron 表达式</label>
                     <input type="text" class="form-input" id="edit-task-cron">
                 </div>

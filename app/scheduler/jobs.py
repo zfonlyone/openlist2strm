@@ -8,6 +8,8 @@ from typing import Callable, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
 
 from app.config import get_config, TaskConfig
@@ -153,14 +155,45 @@ class SchedulerManager:
                     job.next_run_time.isoformat() if job.next_run_time else None
                 )
     
+    def _get_trigger(self, task: TaskConfig):
+        """Create a trigger based on task configuration"""
+        stype = task.schedule_type
+        sval = task.schedule_value
+        
+        try:
+            if stype == "interval":
+                # Value is minutes
+                minutes = int(sval) if sval else 30
+                return IntervalTrigger(minutes=minutes)
+                
+            elif stype == "daily":
+                # Value is HH:MM
+                if ":" not in sval:
+                    sval = "04:00"
+                hour, minute = map(int, sval.split(":"))
+                return CronTrigger(hour=hour, minute=minute)
+                
+            elif stype == "once":
+                # Run once after a short delay (e.g. 10s) or at specific time
+                return DateTrigger(run_date=None) # Passing None runs it immediately
+                
+            else:
+                # Default to Cron
+                cron_params = self._parse_cron(sval or task.cron)
+                return CronTrigger(**cron_params)
+        except Exception as e:
+            logger.error(f"Failed to create trigger for task {task.id} (type={stype}, val={sval}): {e}")
+            # Fallback to a safe default (e.g. Cron from task.cron)
+            cron_params = self._parse_cron(task.cron)
+            return CronTrigger(**cron_params)
+
     async def _add_job(self, task: TaskConfig) -> bool:
         """Add a job to the scheduler"""
         if not self._scheduler:
             return False
         
         try:
-            cron_params = self._parse_cron(task.cron)
-            trigger = CronTrigger(**cron_params)
+            trigger = self._get_trigger(task)
             
             self._scheduler.add_job(
                 self._execute_task,
@@ -254,28 +287,22 @@ class SchedulerManager:
         self,
         name: str,
         folder: str,
-        cron: str,
+        schedule_type: str = "cron",
+        schedule_value: str = "",
+        cron: str = "",
         enabled: bool = True,
         one_time: bool = False,
     ) -> TaskConfig:
         """
         Create and schedule a new task.
-        
-        Args:
-            name: Display name
-            folder: Folder path to scan
-            cron: Cron expression
-            enabled: Whether to enable immediately
-            one_time: Run once then disable
-            
-        Returns:
-            Created TaskConfig
         """
         task = TaskConfig(
             id=f"task_{uuid.uuid4().hex[:8]}",
             name=name,
             folder=folder,
-            cron=cron,
+            schedule_type=schedule_type,
+            schedule_value=schedule_value,
+            cron=cron or ("0 2 * * *" if schedule_type == "cron" else ""),
             enabled=enabled,
             one_time=one_time,
         )
@@ -312,26 +339,19 @@ class SchedulerManager:
         task_id: str,
         name: Optional[str] = None,
         folder: Optional[str] = None,
+        schedule_type: Optional[str] = None,
+        schedule_value: Optional[str] = None,
         cron: Optional[str] = None,
         one_time: Optional[bool] = None,
     ) -> Optional[TaskConfig]:
         """
         Update task settings.
-        
-        Args:
-            task_id: Task ID
-            name: New name (optional)
-            folder: New folder (optional)
-            cron: New cron expression (optional)
-            one_time: New one-time flag (optional)
-            
-        Returns:
-            Updated TaskConfig or None if not found
         """
         task = self._tasks.get(task_id)
         if not task:
             return None
         
+        updated = False
         if name is not None:
             task.name = name
         if folder is not None:
@@ -339,12 +359,21 @@ class SchedulerManager:
         if one_time is not None:
             task.one_time = one_time
         
-        # Update cron and reschedule if changed
+        if schedule_type is not None and schedule_type != task.schedule_type:
+            task.schedule_type = schedule_type
+            updated = True
+        
+        if schedule_value is not None and schedule_value != task.schedule_value:
+            task.schedule_value = schedule_value
+            updated = True
+            
         if cron is not None and cron != task.cron:
             task.cron = cron
-            if task.enabled and not task.paused:
-                await self._remove_job(task_id)
-                await self._add_job(task)
+            updated = True
+        
+        if updated and task.enabled and not task.paused:
+            await self._remove_job(task_id)
+            await self._add_job(task)
         
         logger.info(f"Updated task: {task.name} ({task_id})")
         return task

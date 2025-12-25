@@ -204,58 +204,21 @@ async def import_config(file: UploadFile = File(...)):
 @router.put("/openlist/token")
 async def update_openlist_token(data: OpenListTokenUpdate):
     """Update OpenList API token"""
-    config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
-    config_file = Path(config_path)
+    config = get_config()
     
-    try:
-        # Ensure config directory exists
-        config_dir = config_file.parent
-        if not config_dir.exists():
-            try:
-                config_dir.mkdir(parents=True, exist_ok=True)
-            except PermissionError:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Cannot create config directory: {config_dir}. Check volume mount permissions."
-                )
-        
-        # Check if directory is writable
-        if not os.access(config_dir, os.W_OK):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Config directory is not writable: {config_dir}. Check Docker volume mount (remove :ro flag if present)."
-            )
-        
-        # Load existing config or create new
-        if config_file.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
-                config_data = yaml.safe_load(f) or {}
-        else:
-            config_data = {}
-        
-        # Update token
-        if "openlist" not in config_data:
-            config_data["openlist"] = {}
-        config_data["openlist"]["token"] = data.token
-        
-        # Write back
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-        
-        # Reload
+    # Update current config object
+    config.openlist.token = data.token
+    
+    # Save using robust logic
+    if config.save():
+        # Reload to ensure consistency (though Config.save normally handles it)
         reload_config()
-        
         return {"message": "OpenList token updated", "success": True}
-        
-    except HTTPException:
-        raise
-    except PermissionError as e:
+    else:
         raise HTTPException(
             status_code=500,
-            detail=f"Permission denied writing to {config_path}. Check Docker volume mount."
+            detail="Failed to save configuration. Please check if /config directory is writable and not mounted as Read-Only."
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
 
 
 @router.get("/openlist/test")
@@ -311,45 +274,29 @@ async def update_telegram_settings(settings: TelegramSettings):
     - **chat_id**: Your Telegram user/chat ID for notifications
     - **allowed_users**: List of user IDs allowed to control the bot
     """
-    config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
+    config = get_config()
     
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        
-        if "telegram" not in config_data:
-            config_data["telegram"] = {}
-        
-        tg = config_data["telegram"]
-        
-        if settings.enabled is not None:
-            tg["enabled"] = settings.enabled
-        if settings.token is not None and settings.token != "***":
-            tg["token"] = settings.token
-        if settings.chat_id is not None:
-            tg["chat_id"] = settings.chat_id
-        if settings.allowed_users is not None:
-            tg["allowed_users"] = settings.allowed_users
-        
-        # Notify settings
-        if "notify" not in tg:
-            tg["notify"] = {}
-        if settings.notify_on_scan_start is not None:
-            tg["notify"]["on_scan_start"] = settings.notify_on_scan_start
-        if settings.notify_on_scan_complete is not None:
-            tg["notify"]["on_scan_complete"] = settings.notify_on_scan_complete
-        if settings.notify_on_error is not None:
-            tg["notify"]["on_error"] = settings.notify_on_error
-        
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-        
-        reload_config()
-        
+    if settings.enabled is not None:
+        config.telegram.enabled = settings.enabled
+    if settings.token is not None and settings.token != "***":
+        config.telegram.token = settings.token
+    if settings.chat_id is not None:
+        config.telegram.chat_id = settings.chat_id
+    if settings.allowed_users is not None:
+        config.telegram.allowed_users = settings.allowed_users
+    
+    # Notify settings
+    if settings.notify_on_scan_start is not None:
+        config.telegram.notify.on_scan_start = settings.notify_on_scan_start
+    if settings.notify_on_scan_complete is not None:
+        config.telegram.notify.on_scan_complete = settings.notify_on_scan_complete
+    if settings.notify_on_error is not None:
+        config.telegram.notify.on_error = settings.notify_on_error
+    
+    if config.save():
         return {"message": "Telegram settings updated", "success": True}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save Telegram settings. Check permissions.")
 
 
 @router.post("/telegram/test")
@@ -422,47 +369,24 @@ async def get_emby_settings():
 async def update_emby_settings(settings: EmbySettings):
     """
     Update Emby notification settings.
-    
-    - **enabled**: Enable/disable Emby notifications
-    - **host**: Emby server URL (e.g., http://emby:8096)
-    - **api_key**: Emby API key
-    - **library_id**: Specific library ID (empty for all)
-    - **notify_on_scan**: Trigger refresh after scan
-    
-    API Key 获取教程:
-    Emby：设置 → 高级 → API 密钥 → 新建应用程序
     """
-    config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
+    config = get_config()
     
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        
-        if "emby" not in config_data:
-            config_data["emby"] = {}
-        
-        emby = config_data["emby"]
-        
-        if settings.enabled is not None:
-            emby["enabled"] = settings.enabled
-        if settings.host is not None:
-            emby["host"] = settings.host
-        if settings.api_key is not None and settings.api_key != "***":
-            emby["api_key"] = settings.api_key
-        if settings.library_id is not None:
-            emby["library_id"] = settings.library_id
-        if settings.notify_on_scan is not None:
-            emby["notify_on_scan"] = settings.notify_on_scan
-        
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-        
-        reload_config()
-        
+    if settings.enabled is not None:
+        config.emby.enabled = settings.enabled
+    if settings.host is not None:
+        config.emby.host = settings.host
+    if settings.api_key is not None and settings.api_key != "***":
+        config.emby.api_key = settings.api_key
+    if settings.library_id is not None:
+        config.emby.library_id = settings.library_id
+    if settings.notify_on_scan is not None:
+        config.emby.notify_on_scan = settings.notify_on_scan
+    
+    if config.save():
         return {"message": "Emby settings updated", "success": True}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save Emby settings. Check permissions.")
 
 
 @router.post("/emby/test")
@@ -516,44 +440,25 @@ async def get_strm_settings():
 async def update_strm_settings(settings: StrmSettings):
     """
     Update STRM generation settings.
-    
-    - **mode**: "path" (相对路径) 或 "direct_link" (完整URL)
-    - **url_encode**: 是否对URL进行编码
-    - **output_path**: STRM文件本地保存路径
-    - **keep_structure**: 是否保持源目录结构
     """
     if settings.mode is not None and settings.mode not in ["path", "direct_link"]:
         raise HTTPException(status_code=400, detail="Mode must be 'path' or 'direct_link'")
     
-    config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
+    config = get_config()
     
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        
-        if "strm" not in config_data:
-            config_data["strm"] = {}
-        
-        strm = config_data["strm"]
-        
-        if settings.mode is not None:
-            strm["mode"] = settings.mode
-        if settings.url_encode is not None:
-            strm["url_encode"] = settings.url_encode
-        if settings.output_path is not None:
-            strm["output_path"] = settings.output_path
-        if settings.keep_structure is not None:
-            strm["keep_structure"] = settings.keep_structure
-        
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-        
-        reload_config()
-        
+    if settings.mode is not None:
+        config.strm.mode = settings.mode
+    if settings.url_encode is not None:
+        config.strm.url_encode = settings.url_encode
+    if settings.output_path is not None:
+        config.strm.output_path = settings.output_path
+    if settings.keep_structure is not None:
+        config.strm.keep_structure = settings.keep_structure
+    
+    if config.save():
         return {"message": "STRM settings updated", "success": True}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save STRM settings. Check permissions.")
 
 
 # ============ Scan Settings ============
@@ -580,40 +485,23 @@ async def get_scan_settings():
 async def update_scan_settings(settings: ScanSettings):
     """
     Update scan mode settings.
-    
-    - **mode**: "incremental" (增量) 或 "full" (全量)
-    - **data_source**: "cache" (使用缓存) 或 "realtime" (实时获取)
     """
     if settings.mode is not None and settings.mode not in ["incremental", "full"]:
         raise HTTPException(status_code=400, detail="Mode must be 'incremental' or 'full'")
     if settings.data_source is not None and settings.data_source not in ["cache", "realtime"]:
         raise HTTPException(status_code=400, detail="Data source must be 'cache' or 'realtime'")
     
-    config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
+    config = get_config()
     
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        
-        if "scan" not in config_data:
-            config_data["scan"] = {}
-        
-        scan = config_data["scan"]
-        
-        if settings.mode is not None:
-            scan["mode"] = settings.mode
-        if settings.data_source is not None:
-            scan["data_source"] = settings.data_source
-        
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-        
-        reload_config()
-        
+    if settings.mode is not None:
+        config.scan.mode = settings.mode
+    if settings.data_source is not None:
+        config.scan.data_source = settings.data_source
+    
+    if config.save():
         return {"message": "Scan settings updated", "success": True}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save scan settings. Check permissions.")
 
 
 # ============ QoS Settings ============
@@ -642,29 +530,43 @@ async def get_qos_settings():
 @router.put("/qos")
 async def update_qos_settings(settings: QoSSettings):
     """
-    Update QoS settings dynamically.
-    
-    Note: These changes are temporary and will be reset on restart.
-    To persist, update config.yml.
-    
-    - **threading_mode**: "single" (单线程) 或 "multi" (多线程)
-    - **thread_pool_size**: 线程池大小 (多线程模式)
-    - **rate_limit**: 每分钟请求限制
+    Update QoS settings and persist to config.yml.
     """
     from app.core.qos import get_qos_limiter
     
+    config = get_config()
     limiter = get_qos_limiter()
     
+    # Update current config object
+    if settings.qps is not None:
+        config.qos.qps = settings.qps
+    if settings.max_concurrent is not None:
+        config.qos.max_concurrent = settings.max_concurrent
+    if settings.interval is not None:
+        config.qos.interval = settings.interval
+    if settings.threading_mode is not None:
+        config.qos.threading_mode = settings.threading_mode
+    if settings.thread_pool_size is not None:
+        config.qos.thread_pool_size = settings.thread_pool_size
+    if settings.rate_limit is not None:
+        config.qos.rate_limit = settings.rate_limit
+
+    # Update limiter in memory
     limiter.update_limits(
-        qps=settings.qps,
-        max_concurrent=settings.max_concurrent,
-        interval_ms=settings.interval,
+        qps=config.qos.qps,
+        max_concurrent=config.qos.max_concurrent,
+        interval_ms=config.qos.interval,
     )
     
-    return {
-        "message": "QoS settings updated",
-        "stats": limiter.stats,
-    }
+    # Persist to disk
+    if config.save():
+        return {
+            "message": "QoS settings updated and persisted",
+            "stats": limiter.stats,
+            "success": True
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to persist QoS settings. Check permissions.")
 
 
 # ============ Cache Settings ============

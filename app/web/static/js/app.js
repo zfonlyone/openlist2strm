@@ -502,7 +502,7 @@ async function loadTasks() {
                     </div>
                     <div class="task-item-info">
                         <span>📁 ${task.folder || '所有文件夹'}</span>
-                        <span>⏰ ${task.cron}</span>
+                        <span>⏰ ${formatScheduleSummarized(task)}</span>
                         <span>🕐 上次: ${task.last_run ? formatDate(task.last_run) : '从未'}</span>
                         <span>📅 下次: ${task.next_run ? formatDate(task.next_run) : '-'}</span>
                     </div>
@@ -582,18 +582,52 @@ async function loadTasks() {
     }
 }
 
+function toggleScheduleInputs(prefix) {
+    const type = document.getElementById(`${prefix}-task-schedule-type`).value;
+    const intervalGroup = document.getElementById(`${prefix}-task-interval-group`);
+    const dailyGroup = document.getElementById(`${prefix}-task-daily-group`);
+    const cronGroup = document.getElementById(`${prefix}-task-cron-group`);
+
+    intervalGroup.classList.add('hidden');
+    dailyGroup.classList.add('hidden');
+    cronGroup.classList.add('hidden');
+
+    if (type === 'interval') {
+        intervalGroup.classList.remove('hidden');
+    } else if (type === 'daily') {
+        dailyGroup.classList.remove('hidden');
+    } else if (type === 'cron') {
+        cronGroup.classList.remove('hidden');
+    }
+}
+
+function formatScheduleSummarized(task) {
+    if (task.schedule_type === 'interval') {
+        return `每 ${task.schedule_value} 分钟`;
+    } else if (task.schedule_type === 'daily') {
+        return `每天 ${task.schedule_value}`;
+    } else if (task.schedule_type === 'once') {
+        return `单次任务`;
+    }
+    return `Cron: ${task.cron}`;
+}
+
 function openCreateTaskModal() {
     document.getElementById('new-task-name').value = '';
     document.getElementById('new-task-folder').value = '';
-    document.getElementById('new-task-cron').value = '0 2 * * *';
+    document.getElementById('new-task-schedule-type').value = 'daily';
+    document.getElementById('new-task-interval').value = '60';
+    document.getElementById('new-task-time').value = '04:00';
+    document.getElementById('new-task-cron').value = '';
     document.getElementById('new-task-one-time').checked = false;
+    toggleScheduleInputs('new');
     document.getElementById('create-task-modal').classList.add('active');
 }
 
 async function createTask() {
     const name = document.getElementById('new-task-name').value.trim();
     const folder = document.getElementById('new-task-folder').value.trim();
-    const cron = document.getElementById('new-task-cron').value.trim();
+    const type = document.getElementById('new-task-schedule-type').value;
     const oneTime = document.getElementById('new-task-one-time').checked;
 
     if (!name) {
@@ -601,16 +635,27 @@ async function createTask() {
         return;
     }
 
-    if (!cron) {
-        showToast('警告', '请输入 Cron 表达式', 'warning');
-        return;
+    let value = "";
+    let cron = "";
+
+    if (type === 'interval') {
+        value = document.getElementById('new-task-interval').value;
+        if (!value) { showToast('警告', '请输入间隔时间', 'warning'); return; }
+    } else if (type === 'daily') {
+        value = document.getElementById('new-task-time').value;
+        if (!value) { showToast('警告', '请输入执行时间', 'warning'); return; }
+    } else if (type === 'cron') {
+        cron = document.getElementById('new-task-cron').value.trim();
+        if (!cron) { showToast('警告', '请输入 Cron 表达式', 'warning'); return; }
     }
 
     try {
         await apiRequest('/tasks', 'POST', {
             name,
             folder,
-            cron,
+            schedule_type: type,
+            schedule_value: value,
+            cron: cron || undefined,
             enabled: true,
             one_time: oneTime,
         });
@@ -629,8 +674,20 @@ function openEditTaskModal(taskId) {
     document.getElementById('edit-task-id').value = taskId;
     document.getElementById('edit-task-name').value = task.name || '';
     document.getElementById('edit-task-folder').value = task.folder || '';
-    document.getElementById('edit-task-cron').value = task.cron || '';
+
+    const type = task.schedule_type || 'cron';
+    document.getElementById('edit-task-schedule-type').value = type;
+
+    if (type === 'interval') {
+        document.getElementById('edit-task-interval').value = task.schedule_value || '60';
+    } else if (type === 'daily') {
+        document.getElementById('edit-task-time').value = task.schedule_value || '04:00';
+    } else if (type === 'cron') {
+        document.getElementById('edit-task-cron').value = task.schedule_value || task.cron || '';
+    }
+
     document.getElementById('edit-task-one-time').checked = task.one_time || false;
+    toggleScheduleInputs('edit');
     document.getElementById('edit-task-modal').classList.add('active');
 }
 
@@ -638,14 +695,27 @@ async function updateTask() {
     const taskId = document.getElementById('edit-task-id').value;
     const name = document.getElementById('edit-task-name').value.trim();
     const folder = document.getElementById('edit-task-folder').value.trim();
-    const cron = document.getElementById('edit-task-cron').value.trim();
+    const type = document.getElementById('edit-task-schedule-type').value;
     const oneTime = document.getElementById('edit-task-one-time').checked;
+
+    let value = "";
+    let cron = "";
+
+    if (type === 'interval') {
+        value = document.getElementById('edit-task-interval').value;
+    } else if (type === 'daily') {
+        value = document.getElementById('edit-task-time').value;
+    } else if (type === 'cron') {
+        cron = document.getElementById('edit-task-cron').value.trim();
+    }
 
     try {
         await apiRequest(`/tasks/${taskId}`, 'PUT', {
             name,
             folder,
-            cron,
+            schedule_type: type,
+            schedule_value: value,
+            cron: cron || undefined,
             one_time: oneTime,
         });
         showToast('成功', '任务已更新', 'success');
@@ -742,7 +812,9 @@ async function loadSettings() {
             document.getElementById('strm-mode').value = settings.strm?.mode || 'path';
         }
         if (document.getElementById('strm-url-encode')) {
-            document.getElementById('strm-url-encode').checked = settings.strm?.url_encode !== false;
+            const el = document.getElementById('strm-url-encode');
+            el.checked = settings.strm?.url_encode !== false;
+            updateToggleStatus('strm-url-encode-status', el.checked);
         }
         if (document.getElementById('strm-output-path')) {
             document.getElementById('strm-output-path').value = settings.strm?.output_path || '/strm';
@@ -758,7 +830,9 @@ async function loadSettings() {
 
         // Telegram settings
         if (document.getElementById('tg-enabled')) {
-            document.getElementById('tg-enabled').checked = settings.telegram?.enabled || false;
+            const el = document.getElementById('tg-enabled');
+            el.checked = settings.telegram?.enabled || false;
+            updateToggleStatus('tg-enabled-status', el.checked);
         }
         if (document.getElementById('tg-chat-id')) {
             document.getElementById('tg-chat-id').value = settings.telegram?.chat_id || '';
@@ -766,7 +840,9 @@ async function loadSettings() {
 
         // Emby settings
         if (document.getElementById('emby-enabled')) {
-            document.getElementById('emby-enabled').checked = settings.emby?.enabled || false;
+            const el = document.getElementById('emby-enabled');
+            el.checked = settings.emby?.enabled || false;
+            updateToggleStatus('emby-enabled-status', el.checked);
         }
         if (document.getElementById('emby-host')) {
             document.getElementById('emby-host').value = settings.emby?.host || '';
@@ -778,6 +854,36 @@ async function loadSettings() {
     } catch (error) {
         showToast('错误', '无法加载设置', 'error');
     }
+}
+
+function updateToggleStatus(id, enabled) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerText = enabled ? '已启用 (ON)' : '已禁用 (OFF)';
+    el.style.color = enabled ? 'var(--primary-color)' : 'var(--text-muted)';
+}
+
+function handleUrlEncodeChange(el) {
+    const action = el.checked ? '启用' : '禁用';
+    if (!confirm(`确定要${action} URL 编码吗？\n切换模式后，建议执行全量扫描以重新生成 STRM 文件。`)) {
+        el.checked = !el.checked;
+        return;
+    }
+    updateToggleStatus('strm-url-encode-status', el.checked);
+    // Explicitly save settings when toggled
+    saveStrmSettings();
+}
+
+function handleTgToggle(el) {
+    updateToggleStatus('tg-enabled-status', el.checked);
+    // Explicitly save settings when toggled
+    saveTelegramSettings();
+}
+
+function handleEmbyToggle(el) {
+    updateToggleStatus('emby-enabled-status', el.checked);
+    // Explicitly save settings when toggled
+    saveEmbySettings();
 }
 
 async function updateQoS() {

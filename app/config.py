@@ -53,7 +53,9 @@ class TaskConfig:
     id: str = ""
     name: str = ""
     folder: str = ""
-    cron: str = "0 2 * * *"
+    cron: str = "0 2 * * *"  # Kept for backward compatibility and internal use
+    schedule_type: str = "cron"  # "cron", "interval", "daily", "once"
+    schedule_value: str = ""  # e.g., "30" (minutes) or "04:00" (time)
     enabled: bool = True
     paused: bool = False
     one_time: bool = False
@@ -63,6 +65,10 @@ class TaskConfig:
     def __post_init__(self):
         if not self.id:
             self.id = f"task_{uuid.uuid4().hex[:8]}"
+        
+        # If schedule_type is not set but cron is, try to infer (basic migration)
+        if self.schedule_type == "cron" and not self.schedule_value:
+            self.schedule_value = self.cron
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -70,6 +76,8 @@ class TaskConfig:
             "name": self.name,
             "folder": self.folder,
             "cron": self.cron,
+            "schedule_type": self.schedule_type,
+            "schedule_value": self.schedule_value,
             "enabled": self.enabled,
             "paused": self.paused,
             "one_time": self.one_time,
@@ -84,6 +92,8 @@ class TaskConfig:
             name=data.get("name", ""),
             folder=data.get("folder", ""),
             cron=data.get("cron", "0 2 * * *"),
+            schedule_type=data.get("schedule_type", "cron"),
+            schedule_value=data.get("schedule_value", ""),
             enabled=data.get("enabled", True),
             paused=data.get("paused", False),
             one_time=data.get("one_time", False),
@@ -432,19 +442,36 @@ class Config:
         }
     
     def save(self, config_path: Optional[str] = None) -> bool:
-        """Save configuration to file"""
+        """Save configuration to file with improved permission handling"""
         if config_path is None:
             config_path = os.environ.get("CONFIG_PATH", "/config/config.yml")
         
+        path = Path(config_path)
+        directory = path.parent
+        
         try:
-            path = Path(config_path)
+            # Ensure directory exists
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
             
-            # Load existing config to preserve passwords
-            existing = {}
-            if path.exists():
-                with open(path, "r", encoding="utf-8") as f:
-                    existing = yaml.safe_load(f) or {}
+            # Check if directory is writable, try to fix if not
+            if not os.access(directory, os.W_OK):
+                try:
+                    # Attempt to add write permission for the current user/group
+                    # This might fail if app isn't running as root/owner
+                    current_mode = directory.stat().st_mode
+                    os.chmod(directory, current_mode | 0o200) 
+                except Exception as e:
+                    print(f"Warning: Cannot fix directory permissions for {directory}: {e}")
             
+            # If file exists, check writability
+            if path.exists() and not os.access(path, os.W_OK):
+                try:
+                    current_mode = path.stat().st_mode
+                    os.chmod(path, current_mode | 0o200)
+                except Exception as e:
+                    print(f"Warning: Cannot fix file permissions for {path}: {e}")
+
             # Build save dict (with full credentials)
             save_data = {
                 "openlist": {
@@ -526,7 +553,9 @@ class Config:
             
             return True
         except Exception as e:
-            print(f"Failed to save config: {e}")
+            error_msg = f"Failed to save config to {config_path}: {str(e)}"
+            print(error_msg)
+            # Re-raise or keep returning False? Let's return False and let the API handle the message
             return False
 
 
