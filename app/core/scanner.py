@@ -347,11 +347,10 @@ class Scanner:
                     continue
 
             try:
-                content = await self.client.download_file_bytes(sub_path)
                 local_path = self.generator.write_subtitle(
                     video_source_path=video_path,
+                    subtitle_source_path=sub_path,
                     subtitle_ext=sub_name.rsplit(".", 1)[-1],
-                    content=content,
                     force=force,
                 )
                 if local_path:

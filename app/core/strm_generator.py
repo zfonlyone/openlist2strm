@@ -215,21 +215,23 @@ class StrmGenerator:
     def write_subtitle(
         self,
         video_source_path: str,
+        subtitle_source_path: str,
         subtitle_ext: str,
-        content: bytes,
         force: bool = False,
     ) -> Optional[str]:
-        """Write subtitle sidecar next to STRM file."""
+        """Write subtitle sidecar as URL-link text (STRM-like)."""
         subtitle_path = self.get_subtitle_path(video_source_path, subtitle_ext)
+        content = self.get_url(subtitle_source_path).strip()
+
         if subtitle_path.exists() and not force:
             try:
-                if subtitle_path.read_bytes() == content:
+                if subtitle_path.read_text(encoding="utf-8").strip() == content:
                     return str(subtitle_path)
             except Exception:
                 pass
 
         subtitle_path.parent.mkdir(parents=True, exist_ok=True)
-        subtitle_path.write_bytes(content)
+        subtitle_path.write_text(content + "\n", encoding="utf-8")
         return str(subtitle_path)
 
     def delete_strm(self, strm_path: str) -> bool:
