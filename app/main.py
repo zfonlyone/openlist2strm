@@ -115,8 +115,9 @@ app = FastAPI(
     title="OpenList2STRM",
     description="轻量级 OpenList 到 STRM 文件转换工具",
     version="1.2.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     lifespan=lifespan,
 )
 

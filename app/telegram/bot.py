@@ -471,12 +471,26 @@ class TelegramBot:
         """Notify scan completion"""
         if not self.notify_config.on_scan_complete:
             return
-        
+
+        # Compatible with both old dict summary and new list[ScanProgress]
+        total_created = 0
+        total_updated = 0
+        total_deleted = 0
+
+        if isinstance(result, list):
+            total_created = sum(getattr(r, "files_created", 0) for r in result)
+            total_updated = sum(getattr(r, "files_updated", 0) for r in result)
+            total_deleted = sum(getattr(r, "files_deleted", 0) for r in result)
+        elif isinstance(result, dict):
+            total_created = result.get("total_files_created", result.get("created", 0))
+            total_updated = result.get("total_files_updated", result.get("updated", 0))
+            total_deleted = result.get("total_files_deleted", result.get("deleted", 0))
+
         await self.notify(
             f"✅ *扫描完成*\n"
-            f"新建: {result.get('total_files_created', 0)} | "
-            f"更新: {result.get('total_files_updated', 0)} | "
-            f"删除: {result.get('total_files_deleted', 0)}"
+            f"新建: {total_created} | "
+            f"更新: {total_updated} | "
+            f"删除: {total_deleted}"
         )
     
     async def notify_error(self, error: str) -> None:
