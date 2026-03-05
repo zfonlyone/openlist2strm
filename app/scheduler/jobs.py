@@ -167,9 +167,8 @@ class SchedulerManager:
         if self._scheduler and task_id in self._tasks:
             job = self._scheduler.get_job(self._get_job_id(task_id))
             if job:
-                self._tasks[task_id].next_run = (
-                    job.next_run_time.isoformat() if job.next_run_time else None
-                )
+                nrt = getattr(job, "next_run_time", None) or getattr(job, "next_fire_time", None)
+                self._tasks[task_id].next_run = nrt.isoformat() if nrt else None
     
     def _get_trigger(self, task: TaskConfig):
         """Create a trigger based on task configuration"""
