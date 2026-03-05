@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import List, Optional
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -40,6 +40,8 @@ class TelegramBot:
         self.token = token or config.telegram.token
         self.allowed_users = config.telegram.allowed_users
         self.notify_config = config.telegram.notify
+        self.default_chat_id = int(config.telegram.chat_id) if str(config.telegram.chat_id).strip() else None
+        self.topic_id = int(config.telegram.topic_id) if str(config.telegram.topic_id).strip() else None
         
         self._app: Optional[Application] = None
         self._running = False
@@ -50,6 +52,26 @@ class TelegramBot:
         if not self.allowed_users:
             return True  # No restrictions
         return user_id in self.allowed_users
+
+    def _check_context(self, update: Update) -> bool:
+        """Check if message comes from configured chat/topic."""
+        if not update or not update.effective_chat:
+            return False
+        if self.default_chat_id and update.effective_chat.id != self.default_chat_id:
+            return False
+        if self.topic_id is not None:
+            current_topic = getattr(update.effective_message, "message_thread_id", None)
+            if current_topic != self.topic_id:
+                return False
+        return True
+
+    async def _reply(self, update: Update, text: str, parse_mode: Optional[str] = None, **kwargs) -> None:
+        msg = update.effective_message
+        if not msg:
+            return
+        if self.topic_id is not None:
+            kwargs.setdefault("message_thread_id", self.topic_id)
+        await msg.reply_text(text, parse_mode=parse_mode, **kwargs)
     
     async def _unauthorized(self, update: Update) -> None:
         """Send unauthorized message"""
@@ -62,6 +84,8 @@ class TelegramBot:
     
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -86,6 +110,8 @@ class TelegramBot:
     
     async def cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -111,6 +137,8 @@ class TelegramBot:
     
     async def cmd_scan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /scan command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -161,6 +189,8 @@ class TelegramBot:
     
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /status command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -219,6 +249,8 @@ class TelegramBot:
     
     async def cmd_folders(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /folders command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -244,6 +276,8 @@ class TelegramBot:
     
     async def cmd_select(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /select command - show folder selection keyboard"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -275,6 +309,8 @@ class TelegramBot:
     
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /history command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -304,6 +340,8 @@ class TelegramBot:
     
     async def cmd_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /settings command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -332,6 +370,8 @@ class TelegramBot:
     
     async def cmd_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command"""
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await self._unauthorized(update)
             return
@@ -353,7 +393,9 @@ class TelegramBot:
         """Handle inline keyboard callbacks"""
         query = update.callback_query
         await query.answer()
-        
+
+        if not self._check_context(update):
+            return
         if not self._check_auth(update.effective_user.id):
             await query.edit_message_text("❌ 未授权访问")
             return
@@ -394,17 +436,26 @@ class TelegramBot:
     # ==================== Notification Methods ====================
     
     async def notify(self, message: str) -> None:
-        """Send notification to all known chats"""
-        if not self._app or not self._chat_ids:
+        """Send notification to configured chats/topics"""
+        if not self._app:
             return
-        
-        for chat_id in self._chat_ids:
+
+        targets = set(self._chat_ids)
+        if self.default_chat_id:
+            targets.add(self.default_chat_id)
+        if not targets:
+            return
+
+        for chat_id in targets:
             try:
-                await self._app.bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    parse_mode="Markdown",
-                )
+                kwargs = {
+                    "chat_id": chat_id,
+                    "text": message,
+                    "parse_mode": "Markdown",
+                }
+                if self.topic_id is not None:
+                    kwargs["message_thread_id"] = self.topic_id
+                await self._app.bot.send_message(**kwargs)
             except Exception as e:
                 logger.warning(f"Failed to send notification to {chat_id}: {e}")
     
@@ -463,9 +514,23 @@ class TelegramBot:
         
         # Start bot
         await self._app.initialize()
+        await self._app.bot.set_my_commands([
+            BotCommand("start", "开始使用机器人"),
+            BotCommand("help", "查看帮助"),
+            BotCommand("scan", "立即扫描"),
+            BotCommand("status", "查看状态"),
+            BotCommand("folders", "查看监控目录"),
+            BotCommand("select", "选择目录扫描"),
+            BotCommand("history", "查看扫描历史"),
+            BotCommand("settings", "查看当前配置"),
+            BotCommand("cancel", "取消正在进行的扫描"),
+        ])
         await self._app.start()
         await self._app.updater.start_polling()
-        
+
+        if self.default_chat_id:
+            self._chat_ids.add(self.default_chat_id)
+
         self._running = True
         logger.info("Telegram bot started")
     

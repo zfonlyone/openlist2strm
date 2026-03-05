@@ -2,18 +2,52 @@ version: '3.8'
 
 services:
   openlist2strm:
-    image: zfonlyone/openlist2strm:latest
+    build:
+      context: .
+    image: local/openlist2strm:dev
     container_name: openlist2strm
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
-      - "127.0.0.1:9527:9527"
+      - "${OPENLIST2STRM_BIND_IP:-127.0.0.1}:${OPENLIST2STRM_WEB_PORT:-9527}:9527"
     volumes:
-      - ./config:/config:shared
-      - ./data:/data:shared
-      - ./movie/strm:/strm:shared
+      - ${OPENLIST2STRM_CONFIG_DIR:-./config}:/config:shared
+      - ${OPENLIST2STRM_DATA_DIR:-./data}:/data:shared
+      - ${OPENLIST2STRM_STRM_DIR:-./movie/strm}:/strm:shared
     environment:
-      - TZ=Asia/Shanghai
-      - CONFIG_PATH=/config/config.yml
+      TZ: ${TZ:-Asia/Shanghai}
+      CONFIG_PATH: ${CONFIG_PATH:-/config/config.yml}
+      OPENLIST_HOST: ${OPENLIST_HOST:-http://openlist:5244}
+      OPENLIST_TOKEN: ${OPENLIST_TOKEN:-}
+      OPENLIST_TIMEOUT: ${OPENLIST_TIMEOUT:-30}
+      PATHS_SOURCE: ${PATHS_SOURCE:-/115/流媒体}
+      PATHS_OUTPUT: ${PATHS_OUTPUT:-/strm}
+      STRM_MODE: ${STRM_MODE:-path}
+      STRM_URL_ENCODE: ${STRM_URL_ENCODE:-true}
+      STRM_KEEP_STRUCTURE: ${STRM_KEEP_STRUCTURE:-true}
+      STRM_OUTPUT_PATH: ${STRM_OUTPUT_PATH:-/strm}
+      WEB_PORT: ${OPENLIST2STRM_WEB_PORT:-9527}
+      WEB_AUTH_ENABLED: ${WEB_AUTH_ENABLED:-true}
+      WEB_AUTH_USERNAME: ${WEB_AUTH_USERNAME:-admin}
+      WEB_AUTH_PASSWORD: ${WEB_AUTH_PASSWORD:-}
+      WEB_AUTH_API_TOKEN: ${WEB_AUTH_API_TOKEN:-}
+      EMBY_ENABLED: ${EMBY_ENABLED:-false}
+      EMBY_HOST: ${EMBY_HOST:-}
+      EMBY_API_KEY: ${EMBY_API_KEY:-}
+      EMBY_LIBRARY_ID: ${EMBY_LIBRARY_ID:-}
+      EMBY_NOTIFY_ON_SCAN: ${EMBY_NOTIFY_ON_SCAN:-true}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_TOPIC_ID: ${TELEGRAM_TOPIC_ID:-}
+      TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
+      TELEGRAM_NOTIFY_ON_SCAN_START: ${TELEGRAM_NOTIFY_ON_SCAN_START:-true}
+      TELEGRAM_NOTIFY_ON_SCAN_COMPLETE: ${TELEGRAM_NOTIFY_ON_SCAN_COMPLETE:-true}
+      TELEGRAM_NOTIFY_ON_ERROR: ${TELEGRAM_NOTIFY_ON_ERROR:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-7}
+      LOG_COLORIZE: ${LOG_COLORIZE:-true}
     networks:
       - media-server
     healthcheck:

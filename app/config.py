@@ -9,6 +9,55 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 
+def _parse_bool(value: Any, default: Optional[bool] = None) -> Optional[bool]:
+    """Parse flexible boolean values from env/config."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_csv_list(value: Any, cast_int: bool = False) -> Optional[List[Any]]:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    raw = [item.strip() for item in str(value).split(",")]
+    items = [item for item in raw if item]
+    if cast_int:
+        parsed: List[int] = []
+        for item in items:
+            number = _parse_int(item)
+            if number is not None:
+                parsed.append(number)
+        return parsed
+    return items
+
+
 @dataclass
 class OpenListConfig:
     """OpenList API configuration"""
@@ -139,6 +188,7 @@ class TelegramConfig:
     enabled: bool = False
     token: str = ""
     chat_id: str = ""  # User/Chat ID for notifications
+    topic_id: str = ""  # Telegram forum topic ID
     allowed_users: List[int] = field(default_factory=list)
     notify: TelegramNotifyConfig = field(default_factory=TelegramNotifyConfig)
 
@@ -193,10 +243,101 @@ class Config:
     emby: EmbyConfig = field(default_factory=EmbyConfig)
     web: WebConfig = field(default_factory=WebConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+    @staticmethod
+    def _migrate_legacy_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Migrate legacy keys to current v1.2.0 schema."""
+        migrated = dict(data or {})
+
+        # Legacy: server.port / server.token
+        server = migrated.get("server")
+        if isinstance(server, dict):
+            web = migrated.setdefault("web", {})
+            if isinstance(web, dict):
+                web.setdefault("port", server.get("port", 9527))
+                auth = web.setdefault("auth", {})
+                if isinstance(auth, dict) and server.get("token"):
+                    auth.setdefault("api_token", server.get("token"))
+
+        # Legacy: openlist.url -> openlist.host
+        openlist = migrated.get("openlist")
+        if isinstance(openlist, dict):
+            if openlist.get("url") and not openlist.get("host"):
+                openlist["host"] = openlist["url"]
+
+        return migrated
+
+    def _apply_env_overrides(self) -> None:
+        """Apply environment variable overrides on top of YAML config."""
+        env = os.environ
+
+        self.openlist.host = env.get("OPENLIST_HOST", self.openlist.host)
+        self.openlist.token = env.get("OPENLIST_TOKEN", self.openlist.token)
+        self.openlist.timeout = _parse_int(env.get("OPENLIST_TIMEOUT"), self.openlist.timeout) or self.openlist.timeout
+
+        source_paths = _parse_csv_list(env.get("PATHS_SOURCE"))
+        if source_paths:
+            self.paths.source = source_paths
+        self.paths.output = env.get("PATHS_OUTPUT", self.paths.output)
+
+        extensions = _parse_csv_list(env.get("STRM_EXTENSIONS"))
+        if extensions:
+            self.strm.extensions = extensions
+        self.strm.keep_structure = _parse_bool(env.get("STRM_KEEP_STRUCTURE"), self.strm.keep_structure)
+        self.strm.url_encode = _parse_bool(env.get("STRM_URL_ENCODE"), self.strm.url_encode)
+        self.strm.mode = env.get("STRM_MODE", self.strm.mode)
+        self.strm.output_path = env.get("STRM_OUTPUT_PATH", self.strm.output_path)
+
+        self.qos.qps = _parse_float(env.get("QOS_QPS"), self.qos.qps) or self.qos.qps
+        self.qos.max_concurrent = _parse_int(env.get("QOS_MAX_CONCURRENT"), self.qos.max_concurrent) or self.qos.max_concurrent
+        self.qos.interval = _parse_int(env.get("QOS_INTERVAL"), self.qos.interval) or self.qos.interval
+        self.qos.threading_mode = env.get("QOS_THREADING_MODE", self.qos.threading_mode)
+        self.qos.thread_pool_size = _parse_int(env.get("QOS_THREAD_POOL_SIZE"), self.qos.thread_pool_size) or self.qos.thread_pool_size
+        self.qos.rate_limit = _parse_int(env.get("QOS_RATE_LIMIT"), self.qos.rate_limit) or self.qos.rate_limit
+
+        self.scan.mode = env.get("SCAN_MODE", self.scan.mode)
+        self.scan.data_source = env.get("SCAN_DATA_SOURCE", self.scan.data_source)
+        self.incremental.enabled = _parse_bool(env.get("INCREMENTAL_ENABLED"), self.incremental.enabled)
+        self.incremental.check_method = env.get("INCREMENTAL_CHECK_METHOD", self.incremental.check_method)
+
+        self.telegram.enabled = _parse_bool(env.get("TELEGRAM_ENABLED"), self.telegram.enabled)
+        self.telegram.token = env.get("TELEGRAM_TOKEN", self.telegram.token)
+        self.telegram.chat_id = env.get("TELEGRAM_CHAT_ID", self.telegram.chat_id)
+        self.telegram.topic_id = env.get("TELEGRAM_TOPIC_ID", self.telegram.topic_id)
+        allowed_users = _parse_csv_list(env.get("TELEGRAM_ALLOWED_USERS"), cast_int=True)
+        if allowed_users is not None:
+            self.telegram.allowed_users = allowed_users
+        self.telegram.notify.on_scan_start = _parse_bool(
+            env.get("TELEGRAM_NOTIFY_ON_SCAN_START"), self.telegram.notify.on_scan_start
+        )
+        self.telegram.notify.on_scan_complete = _parse_bool(
+            env.get("TELEGRAM_NOTIFY_ON_SCAN_COMPLETE"), self.telegram.notify.on_scan_complete
+        )
+        self.telegram.notify.on_error = _parse_bool(
+            env.get("TELEGRAM_NOTIFY_ON_ERROR"), self.telegram.notify.on_error
+        )
+
+        self.emby.enabled = _parse_bool(env.get("EMBY_ENABLED"), self.emby.enabled)
+        self.emby.host = env.get("EMBY_HOST", self.emby.host)
+        self.emby.api_key = env.get("EMBY_API_KEY", self.emby.api_key)
+        self.emby.library_id = env.get("EMBY_LIBRARY_ID", self.emby.library_id)
+        self.emby.notify_on_scan = _parse_bool(env.get("EMBY_NOTIFY_ON_SCAN"), self.emby.notify_on_scan)
+
+        self.web.enabled = _parse_bool(env.get("WEB_ENABLED"), self.web.enabled)
+        self.web.port = _parse_int(env.get("WEB_PORT"), self.web.port) or self.web.port
+        self.web.auth.enabled = _parse_bool(env.get("WEB_AUTH_ENABLED"), self.web.auth.enabled)
+        self.web.auth.username = env.get("WEB_AUTH_USERNAME", self.web.auth.username)
+        self.web.auth.password = env.get("WEB_AUTH_PASSWORD", self.web.auth.password)
+        self.web.auth.api_token = env.get("WEB_AUTH_API_TOKEN", self.web.auth.api_token)
+
+        self.logging.level = env.get("LOG_LEVEL", self.logging.level)
+        self.logging.retention_days = _parse_int(env.get("LOG_RETENTION_DAYS"), self.logging.retention_days) or self.logging.retention_days
+        self.logging.colorize = _parse_bool(env.get("LOG_COLORIZE"), self.logging.colorize)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":
         """Create config from dictionary"""
+        data = cls._migrate_legacy_dict(data)
         config = cls()
         
         # OpenList config
@@ -211,8 +352,11 @@ class Config:
         # Paths config
         if "paths" in data:
             p = data["paths"]
+            source_paths = p.get("source", config.paths.source)
+            if isinstance(source_paths, str):
+                source_paths = _parse_csv_list(source_paths) or config.paths.source
             config.paths = PathsConfig(
-                source=p.get("source", config.paths.source),
+                source=source_paths,
                 output=p.get("output", config.paths.output),
             )
         
@@ -286,6 +430,7 @@ class Config:
                 enabled=tg.get("enabled", config.telegram.enabled),
                 token=tg.get("token", config.telegram.token),
                 chat_id=tg.get("chat_id", config.telegram.chat_id),
+                topic_id=str(tg.get("topic_id", config.telegram.topic_id)),
                 allowed_users=tg.get("allowed_users", config.telegram.allowed_users),
                 notify=notify,
             )
@@ -349,7 +494,9 @@ class Config:
                     break
             else:
                 # Return default config if no file found
-                return cls()
+                config = cls()
+                config._apply_env_overrides()
+                return config
         
         # Try to load config with error handling for encoding issues
         try:
@@ -362,9 +509,13 @@ class Config:
                 data = yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
             print(f"Warning: Failed to parse config file: {e}")
-            return cls()
+            config = cls()
+            config._apply_env_overrides()
+            return config
         
-        return cls.from_dict(data)
+        config = cls.from_dict(data)
+        config._apply_env_overrides()
+        return config
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary"""
@@ -412,6 +563,7 @@ class Config:
                 "enabled": self.telegram.enabled,
                 "token": "***" if self.telegram.token else "",
                 "chat_id": self.telegram.chat_id,
+                "topic_id": self.telegram.topic_id,
                 "allowed_users": self.telegram.allowed_users,
                 "notify": {
                     "on_scan_start": self.telegram.notify.on_scan_start,
@@ -517,6 +669,7 @@ class Config:
                     "enabled": self.telegram.enabled,
                     "token": self.telegram.token,
                     "chat_id": self.telegram.chat_id,
+                    "topic_id": self.telegram.topic_id,
                     "allowed_users": self.telegram.allowed_users,
                     "notify": {
                         "on_scan_start": self.telegram.notify.on_scan_start,
