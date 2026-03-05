@@ -82,12 +82,22 @@ async def run_weekly_sync() -> Dict[str, int]:
             # mkdir may fail when already exists; continue
             pass
 
-        try:
-            await client.upload_file(remote_path=remote_path, content=p.read_bytes(), as_task=True)
-            uploaded += 1
-        except Exception as e:
-            failed += 1
-            logger.warning(f"weekly sync upload failed {remote_path}: {e}")
+        ok = False
+        for attempt in range(1, 4):
+            try:
+                await client.upload_file(remote_path=remote_path, content=p.read_bytes(), as_task=True)
+                uploaded += 1
+                ok = True
+                break
+            except Exception as e:
+                if attempt >= 3:
+                    failed += 1
+                    logger.warning(f"weekly sync upload failed {remote_path}: {e}")
+                else:
+                    logger.info(f"weekly sync retry {attempt}/3 for {remote_path}: {e}")
+
+        if not ok:
+            continue
 
     _save_state(now_state)
     logger.info(f"weekly sync done uploaded={uploaded} skipped={skipped} failed={failed}")
