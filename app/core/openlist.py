@@ -331,6 +331,10 @@ class OpenListClient:
             resp.raise_for_status()
 
 
+# Global client instance
+_client: Optional[OpenListClient] = None
+
+
 def get_openlist_client() -> OpenListClient:
     """Get the global OpenList client instance"""
     global _client
