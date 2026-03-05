@@ -170,6 +170,11 @@ function navigateTo(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
 
+    // Update mobile bottom nav
+    document.querySelectorAll('.mobile-bottom-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.page === page);
+    });
+
     // Show correct page
     document.querySelectorAll('.page').forEach(p => {
         p.classList.toggle('hidden', p.id !== `page-${page}`);
@@ -1309,6 +1314,13 @@ window.addEventListener('DOMContentLoaded', () => {
     initTheme();
     // Setup navigation
     document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            navigateTo(item.dataset.page);
+        });
+    });
+
+    // Setup mobile bottom navigation
+    document.querySelectorAll('.mobile-bottom-item').forEach(item => {
         item.addEventListener('click', () => {
             navigateTo(item.dataset.page);
         });
