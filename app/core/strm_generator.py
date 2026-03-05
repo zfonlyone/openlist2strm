@@ -25,6 +25,7 @@ class StrmGenerator:
         ".rmvb", ".mov", ".flv", ".m2ts", ".webm",
         ".mpg", ".mpeg", ".m4v", ".3gp", ".vob",
     }
+    SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt", ".sub"}
     
     def __init__(
         self,
@@ -92,6 +93,11 @@ class StrmGenerator:
         """
         ext = Path(filename).suffix.lower()
         return ext in self.extensions
+
+    def is_subtitle_file(self, filename: str) -> bool:
+        """Check if a file is a subtitle file."""
+        ext = Path(filename).suffix.lower()
+        return ext in self.SUBTITLE_EXTENSIONS
     
     def get_strm_path(self, source_path: str) -> Path:
         """
@@ -112,6 +118,12 @@ class StrmGenerator:
         else:
             # Flatten structure - just use filename
             return self.output_path / strm_name.name
+
+    def get_subtitle_path(self, video_source_path: str, subtitle_ext: str) -> Path:
+        """Get output subtitle sidecar path for a video."""
+        strm_path = self.get_strm_path(video_source_path)
+        ext = subtitle_ext if subtitle_ext.startswith(".") else f".{subtitle_ext}"
+        return strm_path.with_suffix(ext.lower())
     
     def get_url(self, source_path: str) -> str:
         """
@@ -200,6 +212,26 @@ class StrmGenerator:
             logger.error(f"Failed to write STRM file {strm_path}: {e}")
             return None
     
+    def write_subtitle(
+        self,
+        video_source_path: str,
+        subtitle_ext: str,
+        content: bytes,
+        force: bool = False,
+    ) -> Optional[str]:
+        """Write subtitle sidecar next to STRM file."""
+        subtitle_path = self.get_subtitle_path(video_source_path, subtitle_ext)
+        if subtitle_path.exists() and not force:
+            try:
+                if subtitle_path.read_bytes() == content:
+                    return str(subtitle_path)
+            except Exception:
+                pass
+
+        subtitle_path.parent.mkdir(parents=True, exist_ok=True)
+        subtitle_path.write_bytes(content)
+        return str(subtitle_path)
+
     def delete_strm(self, strm_path: str) -> bool:
         """
         Delete a STRM file.

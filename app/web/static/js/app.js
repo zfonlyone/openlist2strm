@@ -626,19 +626,55 @@ function toggleScheduleInputs(prefix) {
     const type = document.getElementById(`${prefix}-task-schedule-type`).value;
     const intervalGroup = document.getElementById(`${prefix}-task-interval-group`);
     const dailyGroup = document.getElementById(`${prefix}-task-daily-group`);
+    const weeklyGroup = document.getElementById(`${prefix}-task-weekly-group`);
+    const monthlyGroup = document.getElementById(`${prefix}-task-monthly-group`);
     const cronGroup = document.getElementById(`${prefix}-task-cron-group`);
 
     intervalGroup.classList.add('hidden');
     dailyGroup.classList.add('hidden');
+    if (weeklyGroup) weeklyGroup.classList.add('hidden');
+    if (monthlyGroup) monthlyGroup.classList.add('hidden');
     cronGroup.classList.add('hidden');
 
     if (type === 'interval') {
         intervalGroup.classList.remove('hidden');
     } else if (type === 'daily') {
         dailyGroup.classList.remove('hidden');
+    } else if (type === 'weekly') {
+        if (weeklyGroup) weeklyGroup.classList.remove('hidden');
+    } else if (type === 'monthly') {
+        if (monthlyGroup) monthlyGroup.classList.remove('hidden');
     } else if (type === 'cron') {
         cronGroup.classList.remove('hidden');
     }
+}
+
+function _buildSchedulePayload(prefix, type) {
+    let value = "";
+    let cron = "";
+
+    if (type === 'interval') {
+        value = document.getElementById(`${prefix}-task-interval`).value;
+        if (!value) throw new Error('请输入间隔时间');
+    } else if (type === 'daily') {
+        value = document.getElementById(`${prefix}-task-time`).value;
+        if (!value) throw new Error('请输入执行时间');
+    } else if (type === 'weekly') {
+        const time = document.getElementById(`${prefix}-task-weekly-time`).value || '04:00';
+        const weekdays = Array.from(document.querySelectorAll(`.${prefix}-task-weekday:checked`)).map(el => parseInt(el.value, 10));
+        if (!weekdays.length) throw new Error('请至少选择一个星期');
+        value = JSON.stringify({ time, weekdays });
+    } else if (type === 'monthly') {
+        const dt = document.getElementById(`${prefix}-task-monthly-date`).value;
+        const time = document.getElementById(`${prefix}-task-monthly-time`).value || '04:00';
+        const day = dt ? new Date(dt).getDate() : 1;
+        value = JSON.stringify({ time, day });
+    } else if (type === 'cron') {
+        cron = document.getElementById(`${prefix}-task-cron`).value.trim();
+        if (!cron) throw new Error('请输入 Cron 表达式');
+    }
+
+    return { value, cron };
 }
 
 function formatScheduleSummarized(task) {
@@ -646,6 +682,20 @@ function formatScheduleSummarized(task) {
         return `每 ${task.schedule_value} 分钟`;
     } else if (task.schedule_type === 'daily') {
         return `每天 ${task.schedule_value}`;
+    } else if (task.schedule_type === 'weekly') {
+        try {
+            const v = JSON.parse(task.schedule_value || '{}');
+            return `每周 ${((v.weekdays || []).join(','))} @ ${v.time || '04:00'}`;
+        } catch {
+            return `每周 ${task.schedule_value}`;
+        }
+    } else if (task.schedule_type === 'monthly') {
+        try {
+            const v = JSON.parse(task.schedule_value || '{}');
+            return `每月 ${v.day || 1}日 @ ${v.time || '04:00'}`;
+        } catch {
+            return `每月 ${task.schedule_value}`;
+        }
     } else if (task.schedule_type === 'once') {
         return `单次任务`;
     }
@@ -658,6 +708,10 @@ function openCreateTaskModal() {
     document.getElementById('new-task-schedule-type').value = 'daily';
     document.getElementById('new-task-interval').value = '60';
     document.getElementById('new-task-time').value = '04:00';
+    if (document.getElementById('new-task-weekly-time')) document.getElementById('new-task-weekly-time').value = '04:00';
+    if (document.getElementById('new-task-monthly-time')) document.getElementById('new-task-monthly-time').value = '04:00';
+    if (document.getElementById('new-task-monthly-date')) document.getElementById('new-task-monthly-date').value = new Date().toISOString().slice(0, 10);
+    document.querySelectorAll('.new-task-weekday').forEach((el, idx) => { el.checked = idx === 0; });
     document.getElementById('new-task-cron').value = '';
     document.getElementById('new-task-one-time').checked = false;
     toggleScheduleInputs('new');
@@ -678,15 +732,13 @@ async function createTask() {
     let value = "";
     let cron = "";
 
-    if (type === 'interval') {
-        value = document.getElementById('new-task-interval').value;
-        if (!value) { showToast('警告', '请输入间隔时间', 'warning'); return; }
-    } else if (type === 'daily') {
-        value = document.getElementById('new-task-time').value;
-        if (!value) { showToast('警告', '请输入执行时间', 'warning'); return; }
-    } else if (type === 'cron') {
-        cron = document.getElementById('new-task-cron').value.trim();
-        if (!cron) { showToast('警告', '请输入 Cron 表达式', 'warning'); return; }
+    try {
+        const payload = _buildSchedulePayload('new', type);
+        value = payload.value;
+        cron = payload.cron;
+    } catch (e) {
+        showToast('警告', e.message, 'warning');
+        return;
     }
 
     try {
@@ -722,6 +774,21 @@ function openEditTaskModal(taskId) {
         document.getElementById('edit-task-interval').value = task.schedule_value || '60';
     } else if (type === 'daily') {
         document.getElementById('edit-task-time').value = task.schedule_value || '04:00';
+    } else if (type === 'weekly') {
+        let weekly = { time: '04:00', weekdays: [1] };
+        try { weekly = { ...weekly, ...(JSON.parse(task.schedule_value || '{}')) }; } catch {}
+        document.getElementById('edit-task-weekly-time').value = weekly.time || '04:00';
+        document.querySelectorAll('.edit-task-weekday').forEach(el => {
+            el.checked = (weekly.weekdays || []).includes(parseInt(el.value, 10));
+        });
+    } else if (type === 'monthly') {
+        let monthly = { time: '04:00', day: 1 };
+        try { monthly = { ...monthly, ...(JSON.parse(task.schedule_value || '{}')) }; } catch {}
+        document.getElementById('edit-task-monthly-time').value = monthly.time || '04:00';
+        const d = new Date();
+        d.setDate(parseInt(monthly.day || 1, 10));
+        const iso = d.toISOString().slice(0, 10);
+        document.getElementById('edit-task-monthly-date').value = iso;
     } else if (type === 'cron') {
         document.getElementById('edit-task-cron').value = task.schedule_value || task.cron || '';
     }
@@ -741,12 +808,13 @@ async function updateTask() {
     let value = "";
     let cron = "";
 
-    if (type === 'interval') {
-        value = document.getElementById('edit-task-interval').value;
-    } else if (type === 'daily') {
-        value = document.getElementById('edit-task-time').value;
-    } else if (type === 'cron') {
-        cron = document.getElementById('edit-task-cron').value.trim();
+    try {
+        const payload = _buildSchedulePayload('edit', type);
+        value = payload.value;
+        cron = payload.cron;
+    } catch (e) {
+        showToast('警告', e.message, 'warning');
+        return;
     }
 
     try {

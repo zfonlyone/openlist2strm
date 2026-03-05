@@ -300,8 +300,35 @@ class OpenListClient:
                 yield result
 
 
-# Global client instance
-_client: Optional[OpenListClient] = None
+    async def download_file_bytes(self, path: str) -> bytes:
+        """Download file bytes from OpenList by raw url."""
+        raw_url = await self.get_download_url(path)
+        qos = get_qos_limiter()
+        async with qos.acquire():
+            client = await self._get_client()
+            resp = await client.get(raw_url, headers=self._get_headers())
+            resp.raise_for_status()
+            return resp.content
+
+    async def mkdir(self, path: str) -> None:
+        """Ensure directory exists on OpenList."""
+        await self._post("/api/fs/mkdir", {"path": path})
+
+    async def upload_file(self, remote_path: str, content: bytes, as_task: bool = False) -> None:
+        """Upload file to OpenList via fs/put endpoint."""
+        host = self._get_config_val("host", self._host).rstrip("/")
+        url = urljoin(host + "/", "/api/fs/put")
+        headers = self._get_headers()
+        headers.update({
+            "File-Path": quote(remote_path, safe="/"),
+            "As-Task": "true" if as_task else "false",
+            "Content-Type": "application/octet-stream",
+        })
+        qos = get_qos_limiter()
+        async with qos.acquire():
+            client = await self._get_client()
+            resp = await client.put(url, content=content, headers=headers)
+            resp.raise_for_status()
 
 
 def get_openlist_client() -> OpenListClient:

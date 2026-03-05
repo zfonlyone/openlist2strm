@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+import json
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
@@ -133,6 +134,21 @@ class SchedulerManager:
                 await self._on_scan_error(str(e))
             raise
     
+    async def _execute_weekly_sync(self) -> None:
+        """Sync Emby-generated metadata/subtitles back to OpenList weekly."""
+        try:
+            from app.core.weekly_sync import run_weekly_sync
+
+            result = await run_weekly_sync()
+            logger.info(
+                "Weekly sync completed: uploaded=%s skipped=%s failed=%s",
+                result.get("uploaded", 0),
+                result.get("skipped", 0),
+                result.get("failed", 0),
+            )
+        except Exception as e:
+            logger.error(f"Weekly sync failed: {e}")
+
     def _on_job_executed(self, event: JobExecutionEvent) -> None:
         """Handle job execution event"""
         if event.job_id.startswith(self.JOB_PREFIX):
@@ -172,6 +188,23 @@ class SchedulerManager:
                     sval = "04:00"
                 hour, minute = map(int, sval.split(":"))
                 return CronTrigger(hour=hour, minute=minute)
+
+            elif stype == "weekly":
+                # Value JSON: {"time":"04:00","weekdays":[1,3,5]} (Mon=1)
+                data = json.loads(sval or "{}")
+                t = data.get("time", "04:00")
+                hour, minute = map(int, t.split(":"))
+                weekdays = data.get("weekdays", [1])
+                dow = ",".join(str(max(0, int(d) - 1)) for d in weekdays)
+                return CronTrigger(day_of_week=dow, hour=hour, minute=minute)
+
+            elif stype == "monthly":
+                # Value JSON: {"time":"04:00","day":1}
+                data = json.loads(sval or "{}")
+                t = data.get("time", "04:00")
+                hour, minute = map(int, t.split(":"))
+                day = int(data.get("day", 1))
+                return CronTrigger(day=day, hour=hour, minute=minute)
                 
             elif stype == "once":
                 # Run once after a short delay (e.g. 10s) or at specific time
@@ -262,6 +295,15 @@ class SchedulerManager:
         # Start scheduler
         self._scheduler.start()
         self._running = True
+
+        # Weekly sync job (Monday 03:30)
+        self._scheduler.add_job(
+            self._execute_weekly_sync,
+            trigger=CronTrigger(day_of_week="mon", hour=3, minute=30),
+            id="strm_weekly_sync",
+            name="Weekly Metadata Sync",
+            replace_existing=True,
+        )
         
         task_count = len([t for t in self._tasks.values() if t.enabled])
         logger.info(f"Scheduler started with {task_count} active tasks")

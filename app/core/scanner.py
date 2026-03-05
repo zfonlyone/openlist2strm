@@ -185,6 +185,7 @@ class Scanner:
                         file_info,
                         force,
                         processed_paths,
+                        files,
                     )
             
             # Cleanup deleted files
@@ -252,6 +253,7 @@ class Scanner:
         file_info: dict,
         force: bool,
         processed_paths: Set[str],
+        folder_files: Optional[List[dict]] = None,
     ) -> None:
         """Process a single file"""
         name = file_info.get("name", "")
@@ -292,11 +294,79 @@ class Scanner:
                     modified=modified,
                     strm_path=strm_path,
                 )
+
+                # Sync same-name subtitles for better Emby local subtitle detection
+                if folder_files:
+                    await self._sync_subtitles_for_video(
+                        current_path=current_path,
+                        video_info=file_info,
+                        all_files=folder_files,
+                        force=force,
+                    )
         except Exception as e:
             error_msg = f"Failed to process {file_path}: {e}"
             logger.warning(error_msg)
             self._progress.errors.append(error_msg)
     
+    async def _sync_subtitles_for_video(
+        self,
+        current_path: str,
+        video_info: dict,
+        all_files: List[dict],
+        force: bool = False,
+    ) -> None:
+        """Download same-name subtitles and place them as local sidecars."""
+        video_name = video_info.get("name", "")
+        video_stem = video_name.rsplit(".", 1)[0].lower()
+        video_path = f"{current_path.rstrip('/')}/{video_name}"
+
+        subtitle_items: List[dict] = []
+        for item in all_files:
+            name = item.get("name", "")
+            if not self.generator.is_subtitle_file(name):
+                continue
+            lower = name.lower()
+            subtitle_stem = lower.rsplit(".", 1)[0]
+            if subtitle_stem == video_stem or subtitle_stem.startswith(video_stem + "."):
+                subtitle_items.append(item)
+
+        for sub in subtitle_items:
+            sub_name = sub.get("name", "")
+            sub_path = f"{current_path.rstrip('/')}/{sub_name}"
+            sub_modified = sub.get("modified", "")
+            sub_size = sub.get("size", 0)
+
+            if self.incremental_enabled and not force:
+                changed = await self.cache.has_changed(
+                    path=sub_path,
+                    modified=sub_modified,
+                    size=sub_size,
+                    check_method=self.check_method,
+                )
+                if not changed:
+                    continue
+
+            try:
+                content = await self.client.download_file_bytes(sub_path)
+                local_path = self.generator.write_subtitle(
+                    video_source_path=video_path,
+                    subtitle_ext=sub_name.rsplit(".", 1)[-1],
+                    content=content,
+                    force=force,
+                )
+                if local_path:
+                    await self.cache.upsert_file(
+                        path=sub_path,
+                        name=sub_name,
+                        size=sub_size,
+                        modified=sub_modified,
+                        strm_path=local_path,
+                    )
+            except Exception as e:
+                err = f"Failed to sync subtitle {sub_path}: {e}"
+                logger.warning(err)
+                self._progress.errors.append(err)
+
     async def _cleanup_deleted(
         self,
         folder: str,
