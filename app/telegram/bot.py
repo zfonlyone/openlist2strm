@@ -53,6 +53,29 @@ class TelegramBot:
             return True  # No restrictions
         return user_id in self.allowed_users
 
+    def _extract_topic_id(self, update: Update) -> Optional[int]:
+        """兼容不同场景提取 topic id。"""
+        if not update:
+            return None
+        msg = update.effective_message
+        if not msg:
+            return None
+        for attr in ("message_thread_id", "reply_to_top_message_id"):
+            v = getattr(msg, attr, None)
+            if v is not None:
+                try:
+                    return int(v)
+                except Exception:
+                    pass
+        # 某些客户端中从 reply_to_message 推断 topic starter
+        try:
+            r = getattr(msg, "reply_to_message", None)
+            if r is not None and getattr(r, "forum_topic_created", None):
+                return int(getattr(r, "message_id", 0) or 0)
+        except Exception:
+            pass
+        return None
+
     def _check_context(self, update: Update) -> bool:
         """Check if message comes from configured chat/topic."""
         if not update or not update.effective_chat:
@@ -60,8 +83,9 @@ class TelegramBot:
         if self.default_chat_id and update.effective_chat.id != self.default_chat_id:
             return False
         if self.topic_id is not None:
-            current_topic = getattr(update.effective_message, "message_thread_id", None)
-            if current_topic != self.topic_id:
+            current_topic = self._extract_topic_id(update)
+            if int(current_topic or 0) != int(self.topic_id):
+                logger.debug("Telegram context rejected: topic=%s expected=%s", current_topic, self.topic_id)
                 return False
         return True
 
