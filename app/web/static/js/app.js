@@ -432,7 +432,7 @@ async function addFolder() {
 
 async function toggleFolder(path, enabled) {
     try {
-        await apiRequest(`/folders/${encodeURIComponent(path.replace(/^\//, ''))}`, 'PUT', {
+        await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'PUT', {
             enabled: enabled,
         });
         showToast('成功', enabled ? '文件夹已启用' : '文件夹已禁用', 'success');
@@ -535,7 +535,7 @@ async function deleteFolder(path) {
     if (!confirm(`确定要删除文件夹 "${path}" 吗？`)) return;
 
     try {
-        await apiRequest(`/folders/${encodeURIComponent(path.replace(/^\//, ''))}`, 'DELETE');
+        await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'DELETE');
         showToast('成功', '文件夹已删除', 'success');
         await loadFolders();
     } catch (error) {

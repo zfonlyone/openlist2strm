@@ -147,6 +147,20 @@ async def remove_folder(folder_path: str):
     }
 
 
+
+
+@router.put("")
+async def update_folder_by_query(path: str, request: UpdateFolderRequest):
+    """Update folder settings by query path (safer for special chars)."""
+    return await update_folder(path, request)
+
+
+@router.delete("")
+async def remove_folder_by_query(path: str):
+    """Remove folder by query path (safer for special chars)."""
+    return await remove_folder(path)
+
+
 @router.get("/{folder_path:path}/files")
 async def list_folder_files(folder_path: str, limit: int = 100, offset: int = 0):
     """
