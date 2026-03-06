@@ -138,18 +138,18 @@ class TelegramBot:
         
         await update.message.reply_text(
             "📖 *OpenList2STRM 可直接用命令*\n\n"
-            "`/scan` 立即扫描（按已选文件夹）\n"
-            "`/scan force` 强制全量扫描\n"
-            "`/status` 查看当前运行状态\n"
-            "`/folders` 查看可扫描文件夹\n"
-            "`/select` 按按钮选择扫描目录\n"
-            "`/history` 查看最近扫描记录\n"
-            "`/settings` 查看核心配置\n"
-            "`/cancel` 取消当前扫描\n\n"
+            "/scan 立即扫描（按已选文件夹）\n"
+            "/scan force 强制全量扫描\n"
+            "/status 查看当前运行状态\n"
+            "/folders 查看可扫描文件夹\n"
+            "/select 按按钮选择扫描目录\n"
+            "/history 查看最近扫描记录\n"
+            "/settings 查看核心配置\n"
+            "/cancel 取消当前扫描\n\n"
             "*常用示例:*\n"
-            "1) 先发 `/select` 选目录\n"
-            "2) 再发 `/scan` 开始扫描\n"
-            "3) 用 `/status` 看进度",
+            "1) 先发 /select 选目录\n"
+            "2) 再发 /scan 开始扫描\n"
+            "3) 用 /status 看进度",
             parse_mode="Markdown",
         )
     
