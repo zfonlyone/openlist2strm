@@ -385,11 +385,11 @@ async function loadFolders() {
                         浏览
                     </button>
                     ${folder.enabled !== false
-                    ? `<button class="btn btn-warning btn-sm" onclick="toggleFolder('${escapedPath}', false)">禁用</button>`
-                    : `<button class="btn btn-success btn-sm" onclick="toggleFolder('${escapedPath}', true)">启用</button>`
+                    ? `<button class="btn btn-warning btn-sm" onclick="toggleFolder('${escapedPath}', false, '${folderId}')">禁用</button>`
+                    : `<button class="btn btn-success btn-sm" onclick="toggleFolder('${escapedPath}', true, '${folderId}')">启用</button>`
                 }
                     ${!folder.from_config
-                    ? `<button class="btn btn-danger btn-sm" onclick="deleteFolder('${escapedPath}')">删除</button>`
+                    ? `<button class="btn btn-danger btn-sm" onclick="deleteFolder('${escapedPath}', '${folderId}')">删除</button>`
                     : ''
                 }
                 </div>
@@ -430,11 +430,17 @@ async function addFolder() {
     }
 }
 
-async function toggleFolder(path, enabled) {
+async function toggleFolder(path, enabled, folderId = '') {
     try {
-        await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'PUT', {
-            enabled: enabled,
-        });
+        if (folderId) {
+            await apiRequest(`/folders/by-id/${encodeURIComponent(folderId)}`, 'PUT', {
+                enabled: enabled,
+            });
+        } else {
+            await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'PUT', {
+                enabled: enabled,
+            });
+        }
         showToast('成功', enabled ? '文件夹已启用' : '文件夹已禁用', 'success');
         await loadFolders();
     } catch (error) {
@@ -531,11 +537,15 @@ function autofillTaskNameFromFolder() {
     nameInput.value = parts.length ? `扫描-${parts[parts.length - 1]}` : '扫描-全部目录';
 }
 
-async function deleteFolder(path) {
+async function deleteFolder(path, folderId = '') {
     if (!confirm(`确定要删除文件夹 "${path}" 吗？`)) return;
 
     try {
-        await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'DELETE');
+        if (folderId) {
+            await apiRequest(`/folders/by-id/${encodeURIComponent(folderId)}`, 'DELETE');
+        } else {
+            await apiRequest(`/folders?path=${encodeURIComponent(path)}`, 'DELETE');
+        }
         showToast('成功', '文件夹已删除', 'success');
         await loadFolders();
     } catch (error) {
