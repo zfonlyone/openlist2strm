@@ -442,6 +442,95 @@ async function toggleFolder(path, enabled) {
     }
 }
 
+
+
+const taskFolderPickerState = {
+    targetInputId: null,
+    currentPath: '/',
+};
+
+async function openTaskFolderPicker(targetInputId) {
+    taskFolderPickerState.targetInputId = targetInputId;
+    const input = document.getElementById(targetInputId);
+    taskFolderPickerState.currentPath = (input?.value || '/').trim() || '/';
+    if (!taskFolderPickerState.currentPath.startsWith('/')) taskFolderPickerState.currentPath = '/' + taskFolderPickerState.currentPath;
+    document.getElementById('task-folder-picker-modal').classList.add('active');
+    await taskFolderPickerRefresh();
+}
+
+async function taskFolderPickerRefresh() {
+    const path = taskFolderPickerState.currentPath || '/';
+    const currentEl = document.getElementById('task-folder-picker-current');
+    const listEl = document.getElementById('task-folder-picker-list');
+    if (currentEl) currentEl.textContent = `当前路径: ${path}`;
+    if (listEl) listEl.innerHTML = '<div class="empty-state"><div class="spinner"></div><p>加载中...</p></div>';
+    try {
+        const result = await apiRequest(`/folders/browse?path=${encodeURIComponent(path)}`);
+        const dirs = result.directories || [];
+        if (!dirs.length) {
+            listEl.innerHTML = '<p class="empty-state">当前目录下无子目录</p>';
+            return;
+        }
+        listEl.innerHTML = dirs.map(d => {
+            const nextPath = `${path.replace(/\/$/, '')}/${d.name}`.replace(/\/+/g, '/');
+            return `<div class="folder-item">
+                <span class="folder-icon">📁</span>
+                <div class="folder-info">
+                    <div class="folder-path">${nextPath}</div>
+                </div>
+                <div class="folder-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="taskFolderPickerEnter('${nextPath.replace(/'/g, "\'")}')">进入</button>
+                    <button class="btn btn-primary btn-sm" onclick="taskFolderPickerSelect('${nextPath.replace(/'/g, "\'")}')">选择</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        listEl.innerHTML = `<p class="empty-state">加载失败: ${e.message}</p>`;
+    }
+}
+
+function taskFolderPickerEnter(path) {
+    taskFolderPickerState.currentPath = path;
+    taskFolderPickerRefresh();
+}
+
+function taskFolderPickerGoUp() {
+    const cur = taskFolderPickerState.currentPath || '/';
+    if (cur === '/' || !cur) return;
+    const parts = cur.split('/').filter(Boolean);
+    parts.pop();
+    taskFolderPickerState.currentPath = '/' + parts.join('/');
+    if (taskFolderPickerState.currentPath === '') taskFolderPickerState.currentPath = '/';
+    taskFolderPickerRefresh();
+}
+
+function taskFolderPickerSelectCurrent() {
+    taskFolderPickerSelect(taskFolderPickerState.currentPath || '/');
+}
+
+function taskFolderPickerSelect(path) {
+    const id = taskFolderPickerState.targetInputId;
+    if (id) {
+        const input = document.getElementById(id);
+        if (input) input.value = path;
+    }
+    if (id === 'new-task-folder') {
+        autofillTaskNameFromFolder();
+    }
+    closeModal('task-folder-picker-modal');
+}
+
+function autofillTaskNameFromFolder() {
+    const nameInput = document.getElementById('new-task-name');
+    const folderInput = document.getElementById('new-task-folder');
+    if (!nameInput || !folderInput) return;
+    if ((nameInput.value || '').trim()) return;
+    const folder = (folderInput.value || '').trim();
+    if (!folder) return;
+    const parts = folder.split('/').filter(Boolean);
+    nameInput.value = parts.length ? `扫描-${parts[parts.length - 1]}` : '扫描-全部目录';
+}
+
 async function deleteFolder(path) {
     if (!confirm(`确定要删除文件夹 "${path}" 吗？`)) return;
 
@@ -1303,6 +1392,8 @@ function toggleMobileMenu() {
 // Initialize Application
 window.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    document.getElementById('new-task-folder')?.addEventListener('blur', autofillTaskNameFromFolder);
+
     // Setup navigation
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {

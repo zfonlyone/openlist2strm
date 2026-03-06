@@ -677,7 +677,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">监控文件夹</label>
-                    <input type="text" class="form-input" id="new-task-folder" list="task-folder-suggestions" placeholder="例如: /115/电影（留空=全部）">
+                    <div style="display:flex; gap:8px;"><input type="text" class="form-input" id="new-task-folder" list="task-folder-suggestions" placeholder="例如: /115/电影（留空=全部）" style="flex:1;"><button class="btn btn-secondary" type="button" onclick="openTaskFolderPicker('new-task-folder')">📂 选择</button></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">调度方式</label>
@@ -740,7 +740,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">监控文件夹</label>
-                    <input type="text" class="form-input" id="edit-task-folder" list="task-folder-suggestions" placeholder="留空=全部">
+                    <div style="display:flex; gap:8px;"><input type="text" class="form-input" id="edit-task-folder" list="task-folder-suggestions" placeholder="留空=全部" style="flex:1;"><button class="btn btn-secondary" type="button" onclick="openTaskFolderPicker('edit-task-folder')">📂 选择</button></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">调度方式</label>
@@ -785,6 +785,28 @@
             </div>
         </div>
     </div>
+
+
+
+    <!-- Task Folder Picker Modal -->
+    <div id="task-folder-picker-modal" class="modal">
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header">
+                <span class="modal-title">📂 选择任务路径</span>
+                <button class="modal-close" onclick="closeModal('task-folder-picker-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="task-folder-picker-current" style="font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 8px; color: var(--text-secondary);">/</div>
+                <div style="display:flex; gap:8px; margin-bottom: 8px;">
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="taskFolderPickerGoUp()">⬆️ 上一级</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="taskFolderPickerRefresh()">🔄 刷新</button>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="taskFolderPickerSelectCurrent()">✅ 选择当前目录</button>
+                </div>
+                <div id="task-folder-picker-list" class="folder-list"></div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Add Folder Modal -->
     <div id="add-folder-modal" class="modal">
