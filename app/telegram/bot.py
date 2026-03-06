@@ -137,21 +137,19 @@ class TelegramBot:
             return
         
         await update.message.reply_text(
-            "📖 *帮助信息*\n\n"
-            "*扫描命令:*\n"
-            "/scan - 扫描所有配置的文件夹\n"
-            "/scan /path - 扫描指定文件夹\n"
-            "/scan force - 强制全量扫描\n\n"
-            "*状态命令:*\n"
-            "/status - 查看扫描器和定时任务状态\n"
-            "/history - 查看最近10次扫描记录\n\n"
-            "*文件夹命令:*\n"
-            "/folders - 列出所有监控的文件夹\n"
-            "/select - 交互式选择文件夹扫描\n\n"
-            "*设置命令:*\n"
-            "/settings - 查看当前配置\n\n"
-            "*其他:*\n"
-            "/cancel - 取消正在进行的扫描",
+            "📖 *OpenList2STRM 可直接用命令*\n\n"
+            "`/scan` 立即扫描（按已选文件夹）\n"
+            "`/scan force` 强制全量扫描\n"
+            "`/status` 查看当前运行状态\n"
+            "`/folders` 查看可扫描文件夹\n"
+            "`/select` 按按钮选择扫描目录\n"
+            "`/history` 查看最近扫描记录\n"
+            "`/settings` 查看核心配置\n"
+            "`/cancel` 取消当前扫描\n\n"
+            "*常用示例:*\n"
+            "1) 先发 `/select` 选目录\n"
+            "2) 再发 `/scan` 开始扫描\n"
+            "3) 用 `/status` 看进度",
             parse_mode="Markdown",
         )
     
