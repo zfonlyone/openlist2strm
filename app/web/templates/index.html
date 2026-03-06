@@ -280,7 +280,7 @@
                 <!-- Schedule Info Card -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">⏰ 定时任务</span>
+                        <span class="card-title">⏰ 循环任务</span>
                     </div>
                     <div id="schedule-info">
                         <span class="badge badge-info">加载中...</span>
@@ -332,7 +332,7 @@
                 <!-- Task List -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">📋 定时任务列表</span>
+                        <span class="card-title">📋 循环任务列表</span>
                         <button class="btn btn-secondary btn-sm" onclick="loadTasks()">🔄 刷新</button>
                     </div>
                     <div id="tasks-list">
@@ -667,7 +667,7 @@
     <div id="create-task-modal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
-                <span class="modal-title">➕ 创建定时任务</span>
+                <span class="modal-title">➕ 创建循环任务</span>
                 <button class="modal-close" onclick="closeModal('create-task-modal')">&times;</button>
             </div>
             <div class="modal-body">
@@ -677,7 +677,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">监控文件夹</label>
-                    <input type="text" class="form-input" id="new-task-folder" placeholder="例如: /115/电影">
+                    <input type="text" class="form-input" id="new-task-folder" list="task-folder-suggestions" placeholder="例如: /115/电影（留空=全部）">
                 </div>
                 <div class="form-group">
                     <label class="form-label">调度方式</label>
@@ -686,8 +686,7 @@
                         <option value="daily" selected>每天定时 (Daily)</option>
                         <option value="weekly">每周循环 (Weekly)</option>
                         <option value="monthly">每月循环 (Monthly)</option>
-                        <option value="once">立即执行一次 (Once)</option>
-                        <option value="cron">高级 Cron 表达式</option>
+                        <option value="once">一次性任务（执行后自动停用）</option>
                     </select>
                 </div>
                 <!-- Dynamic Inputs -->
@@ -717,23 +716,7 @@
                     <input type="date" class="form-input" id="new-task-monthly-date">
                     <input type="time" class="form-input" id="new-task-monthly-time" value="04:00" style="margin-top:8px;">
                 </div>
-                <div id="new-task-cron-group" class="form-group hidden">
-                    <label class="form-label">Cron 表达式</label>
-                    <input type="text" class="form-input" id="new-task-cron" placeholder="0 2 * * *">
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                        格式: 分 时 日 月 周 (例: "0 2 * * *" = 每天凌晨2点)
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">一次性任务</label>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="new-task-one-time">
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px;">
-                        运行一次后自动停用
-                    </span>
-                </div>
+</div>
                 <button class="btn btn-primary" onclick="createTask()"
                     style="width: 100%; margin-top: var(--spacing-md);">
                     创建任务
@@ -757,7 +740,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">监控文件夹</label>
-                    <input type="text" class="form-input" id="edit-task-folder">
+                    <input type="text" class="form-input" id="edit-task-folder" list="task-folder-suggestions" placeholder="留空=全部">
                 </div>
                 <div class="form-group">
                     <label class="form-label">调度方式</label>
@@ -766,8 +749,7 @@
                         <option value="daily">每天定时 (Daily)</option>
                         <option value="weekly">每周循环 (Weekly)</option>
                         <option value="monthly">每月循环 (Monthly)</option>
-                        <option value="once">立即执行一次 (Once)</option>
-                        <option value="cron">高级 Cron 表达式</option>
+                        <option value="once">一次性任务（执行后自动停用）</option>
                     </select>
                 </div>
                 <div id="edit-task-interval-group" class="form-group hidden">
@@ -795,17 +777,6 @@
                     <label class="form-label">每月执行（日期 + 时间）</label>
                     <input type="date" class="form-input" id="edit-task-monthly-date">
                     <input type="time" class="form-input" id="edit-task-monthly-time" value="04:00" style="margin-top:8px;">
-                </div>
-                <div id="edit-task-cron-group" class="form-group hidden">
-                    <label class="form-label">Cron 表达式</label>
-                    <input type="text" class="form-input" id="edit-task-cron">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">一次性任务</label>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="edit-task-one-time">
-                        <span class="toggle-slider"></span>
-                    </label>
                 </div>
                 <button class="btn btn-primary" onclick="updateTask()"
                     style="width: 100%; margin-top: var(--spacing-md);">
@@ -837,6 +808,8 @@
             </div>
         </div>
     </div>
+
+    <datalist id="task-folder-suggestions"></datalist>
 
     <!-- Scripts -->
     <script src="/static/js/app.js"></script>

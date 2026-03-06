@@ -527,8 +527,8 @@ async function loadTasks() {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">⏰</div>
-                    <div class="empty-state-title">暂无定时任务</div>
-                    <p>点击"创建任务"添加新的定时任务</p>
+                    <div class="empty-state-title">暂无循环任务</div>
+                    <p>点击"创建任务"添加新的循环任务（含一次性）</p>
                 </div>
             `;
         } else {
@@ -542,7 +542,6 @@ async function loadTasks() {
                         ? '<span class="badge badge-warning">已暂停</span>'
                         : '<span class="badge badge-success">运行中</span>')
                     : '<span class="badge badge-error">已停用</span>'}
-                            ${task.one_time ? '<span class="badge badge-info">一次性</span>' : ''}
                         </div>
                     </div>
                     <div class="task-item-info">
@@ -633,13 +632,11 @@ function toggleScheduleInputs(prefix) {
     const dailyGroup = document.getElementById(`${prefix}-task-daily-group`);
     const weeklyGroup = document.getElementById(`${prefix}-task-weekly-group`);
     const monthlyGroup = document.getElementById(`${prefix}-task-monthly-group`);
-    const cronGroup = document.getElementById(`${prefix}-task-cron-group`);
 
     intervalGroup.classList.add('hidden');
     dailyGroup.classList.add('hidden');
     if (weeklyGroup) weeklyGroup.classList.add('hidden');
     if (monthlyGroup) monthlyGroup.classList.add('hidden');
-    cronGroup.classList.add('hidden');
 
     if (type === 'interval') {
         intervalGroup.classList.remove('hidden');
@@ -649,14 +646,11 @@ function toggleScheduleInputs(prefix) {
         if (weeklyGroup) weeklyGroup.classList.remove('hidden');
     } else if (type === 'monthly') {
         if (monthlyGroup) monthlyGroup.classList.remove('hidden');
-    } else if (type === 'cron') {
-        cronGroup.classList.remove('hidden');
     }
 }
 
 function _buildSchedulePayload(prefix, type) {
     let value = "";
-    let cron = "";
 
     if (type === 'interval') {
         value = document.getElementById(`${prefix}-task-interval`).value;
@@ -674,12 +668,9 @@ function _buildSchedulePayload(prefix, type) {
         const time = document.getElementById(`${prefix}-task-monthly-time`).value || '04:00';
         const day = dt ? new Date(dt).getDate() : 1;
         value = JSON.stringify({ time, day });
-    } else if (type === 'cron') {
-        cron = document.getElementById(`${prefix}-task-cron`).value.trim();
-        if (!cron) throw new Error('请输入 Cron 表达式');
     }
 
-    return { value, cron };
+    return { value };
 }
 
 function formatScheduleSummarized(task) {
@@ -704,7 +695,18 @@ function formatScheduleSummarized(task) {
     } else if (task.schedule_type === 'once') {
         return `单次任务`;
     }
-    return `Cron: ${task.cron}`;
+    return `自定义: ${task.schedule_value || task.cron || '-'}`;
+}
+
+
+async function refreshTaskFolderSuggestions() {
+    const dl = document.getElementById('task-folder-suggestions');
+    if (!dl) return;
+    try {
+        const result = await apiRequest('/folders');
+        const folders = result.folders || [];
+        dl.innerHTML = folders.map(f => `<option value="${f.path}"></option>`).join('');
+    } catch (_) {}
 }
 
 function openCreateTaskModal() {
@@ -717,30 +719,27 @@ function openCreateTaskModal() {
     if (document.getElementById('new-task-monthly-time')) document.getElementById('new-task-monthly-time').value = '04:00';
     if (document.getElementById('new-task-monthly-date')) document.getElementById('new-task-monthly-date').value = new Date().toISOString().slice(0, 10);
     document.querySelectorAll('.new-task-weekday').forEach((el, idx) => { el.checked = idx === 0; });
-    document.getElementById('new-task-cron').value = '';
-    document.getElementById('new-task-one-time').checked = false;
     toggleScheduleInputs('new');
     document.getElementById('create-task-modal').classList.add('active');
+    refreshTaskFolderSuggestions();
 }
 
 async function createTask() {
-    const name = document.getElementById('new-task-name').value.trim();
+    let name = document.getElementById('new-task-name').value.trim();
     const folder = document.getElementById('new-task-folder').value.trim();
     const type = document.getElementById('new-task-schedule-type').value;
-    const oneTime = document.getElementById('new-task-one-time').checked;
 
     if (!name) {
-        showToast('警告', '请输入任务名称', 'warning');
-        return;
+        const folderText = folder || '全部目录';
+        const typeTextMap = { interval: '间隔', daily: '每天', weekly: '每周', monthly: '每月', once: '一次性' };
+        name = `${typeTextMap[type] || '任务'}-${folderText}`;
     }
 
     let value = "";
-    let cron = "";
 
     try {
         const payload = _buildSchedulePayload('new', type);
         value = payload.value;
-        cron = payload.cron;
     } catch (e) {
         showToast('警告', e.message, 'warning');
         return;
@@ -752,9 +751,8 @@ async function createTask() {
             folder,
             schedule_type: type,
             schedule_value: value,
-            cron: cron || undefined,
             enabled: true,
-            one_time: oneTime,
+            one_time: type === 'once',
         });
         showToast('成功', '任务已创建', 'success');
         closeModal('create-task-modal');
@@ -772,7 +770,7 @@ function openEditTaskModal(taskId) {
     document.getElementById('edit-task-name').value = task.name || '';
     document.getElementById('edit-task-folder').value = task.folder || '';
 
-    const type = task.schedule_type || 'cron';
+    const type = task.schedule_type || 'daily';
     document.getElementById('edit-task-schedule-type').value = type;
 
     if (type === 'interval') {
@@ -794,13 +792,10 @@ function openEditTaskModal(taskId) {
         d.setDate(parseInt(monthly.day || 1, 10));
         const iso = d.toISOString().slice(0, 10);
         document.getElementById('edit-task-monthly-date').value = iso;
-    } else if (type === 'cron') {
-        document.getElementById('edit-task-cron').value = task.schedule_value || task.cron || '';
     }
-
-    document.getElementById('edit-task-one-time').checked = task.one_time || false;
     toggleScheduleInputs('edit');
     document.getElementById('edit-task-modal').classList.add('active');
+    refreshTaskFolderSuggestions();
 }
 
 async function updateTask() {
@@ -808,15 +803,12 @@ async function updateTask() {
     const name = document.getElementById('edit-task-name').value.trim();
     const folder = document.getElementById('edit-task-folder').value.trim();
     const type = document.getElementById('edit-task-schedule-type').value;
-    const oneTime = document.getElementById('edit-task-one-time').checked;
 
     let value = "";
-    let cron = "";
 
     try {
         const payload = _buildSchedulePayload('edit', type);
         value = payload.value;
-        cron = payload.cron;
     } catch (e) {
         showToast('警告', e.message, 'warning');
         return;
@@ -828,8 +820,7 @@ async function updateTask() {
             folder,
             schedule_type: type,
             schedule_value: value,
-            cron: cron || undefined,
-            one_time: oneTime,
+            one_time: type === 'once',
         });
         showToast('成功', '任务已更新', 'success');
         closeModal('edit-task-modal');
