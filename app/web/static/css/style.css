@@ -1167,3 +1167,42 @@ input:checked+.toggle-slider:before {
         display: none !important;
     }
 }
+
+
+/* ==================== Mobile polish v3 ==================== */
+.btn,
+.nav-item,
+.mobile-bottom-item {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-bottom-item:active {
+    transform: scale(0.96);
+}
+
+.page {
+    opacity: 1;
+    transition: opacity 160ms ease;
+}
+
+.page.hidden {
+    opacity: 0;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+        backdrop-filter: blur(8px);
+        margin: 0 -12px 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--glass-border);
+    }
+
+    .task-item-info {
+        row-gap: 4px;
+    }
+}

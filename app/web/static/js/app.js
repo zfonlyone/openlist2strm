@@ -1322,6 +1322,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // Setup mobile bottom navigation
     document.querySelectorAll('.mobile-bottom-item').forEach(item => {
         item.addEventListener('click', () => {
+            if (navigator.vibrate) navigator.vibrate(8);
             navigateTo(item.dataset.page);
         });
     });
