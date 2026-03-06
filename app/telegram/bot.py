@@ -82,11 +82,7 @@ class TelegramBot:
             return False
         if self.default_chat_id and update.effective_chat.id != self.default_chat_id:
             return False
-        if self.topic_id is not None:
-            current_topic = self._extract_topic_id(update)
-            if int(current_topic or 0) != int(self.topic_id):
-                logger.debug("Telegram context rejected: topic=%s expected=%s", current_topic, self.topic_id)
-                return False
+        # topic 限制临时放宽：同群管理员可在任意话题使用
         return True
 
     async def _reply(self, update: Update, text: str, parse_mode: Optional[str] = None, **kwargs) -> None:
