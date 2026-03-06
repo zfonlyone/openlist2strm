@@ -248,8 +248,15 @@ class TelegramBot:
             f"  Cron: `{get_config().schedule.cron}`\n"
         )
         
-        if scheduler._next_run:
-            text += f"  下次执行: {scheduler._next_run.strftime('%Y-%m-%d %H:%M')}\n"
+        # 兼容新版调度器：从任务 next_run 字段推导最近执行时间
+        try:
+            tasks = await scheduler.get_tasks()
+            next_runs = [t.next_run for t in tasks if getattr(t, "next_run", None)]
+            if next_runs:
+                nearest = sorted(next_runs)[0]
+                text += f"  下次执行: {nearest[:16].replace('T', ' ')}\n"
+        except Exception:
+            pass
         
         text += (
             f"\n*缓存统计:*\n"
