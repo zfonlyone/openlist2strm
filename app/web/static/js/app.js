@@ -1031,6 +1031,19 @@ async function loadSettings() {
             document.getElementById('scan-data-source').value = settings.scan?.data_source || 'cache';
         }
 
+        // Web auth settings
+        if (document.getElementById('web-auth-enabled')) {
+            const el = document.getElementById('web-auth-enabled');
+            el.checked = settings.web?.auth?.enabled !== false;
+            updateToggleStatus('web-auth-enabled-status', el.checked);
+        }
+        if (document.getElementById('web-auth-username')) {
+            document.getElementById('web-auth-username').value = settings.web?.auth?.username || 'admin';
+        }
+        if (document.getElementById('web-auth-api-token-status')) {
+            document.getElementById('web-auth-api-token-status').textContent = settings.web?.auth?.api_token_configured ? '已配置' : '未配置';
+        }
+
         // Telegram settings
         if (document.getElementById('tg-enabled')) {
             const el = document.getElementById('tg-enabled');
@@ -1075,6 +1088,67 @@ function handleUrlEncodeChange(el) {
     updateToggleStatus('strm-url-encode-status', el.checked);
     // Explicitly save settings when toggled
     saveStrmSettings();
+}
+
+function handleWebAuthToggle(el) {
+    updateToggleStatus('web-auth-enabled-status', el.checked);
+}
+
+async function saveWebAuthSettings() {
+    const enabled = document.getElementById('web-auth-enabled').checked;
+    const username = document.getElementById('web-auth-username').value.trim() || 'admin';
+    const password = document.getElementById('web-auth-password').value;
+
+    try {
+        await apiRequest('/settings/web-auth', 'PUT', {
+            enabled,
+            username,
+        });
+
+        if (password) {
+            await apiRequest('/auth/password', 'PUT', {
+                username,
+                password,
+            });
+            document.getElementById('web-auth-password').value = '';
+        }
+
+        showToast('成功', '鉴权设置已保存', 'success');
+        await loadSettings();
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
+}
+
+function toggleApiTokenVisibility() {
+    const input = document.getElementById('web-auth-api-token');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function copyApiToken() {
+    const input = document.getElementById('web-auth-api-token');
+    if (!input.value) {
+        showToast('提示', '还没有可复制的 API Key', 'warning');
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(input.value);
+        showToast('成功', 'API Key 已复制', 'success');
+    } catch (error) {
+        showToast('错误', '复制失败，请手动复制', 'error');
+    }
+}
+
+async function generateApiToken() {
+    try {
+        const result = await apiRequest('/auth/generate-token', 'POST');
+        document.getElementById('web-auth-api-token').value = result.token || '';
+        document.getElementById('web-auth-api-token-status').textContent = result.token ? '已配置（刚生成）' : '已配置';
+        showToast('成功', '新的 API Key 已生成并保存', 'success');
+    } catch (error) {
+        showToast('错误', error.message, 'error');
+    }
 }
 
 function handleTgToggle(el) {

@@ -5,7 +5,6 @@ import secrets
 import time
 import logging
 from typing import Optional
-from functools import wraps
 
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.responses import RedirectResponse
@@ -44,8 +43,8 @@ def generate_session_id() -> str:
 
 
 def generate_api_token() -> str:
-    """Generate a secure API token"""
-    return secrets.token_urlsafe(48)
+    """Generate a new random API token with sk- prefix"""
+    return f"sk-{secrets.token_urlsafe(48)}"
 
 
 def create_session(username: str) -> str:
@@ -102,12 +101,7 @@ def verify_api_token(token: str) -> bool:
     config = get_config()
     if not config.web.auth.api_token:
         return False
-    return token == config.web.auth.api_token
-
-
-def generate_api_token() -> str:
-    """Generate a new random API token"""
-    return secrets.token_urlsafe(48)
+    return secrets.compare_digest(token, config.web.auth.api_token)
 
 
 async def get_current_user(

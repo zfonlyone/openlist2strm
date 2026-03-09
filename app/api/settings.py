@@ -66,6 +66,12 @@ class ScanSettings(BaseModel):
     data_source: Optional[str] = None  # "cache" or "realtime"
 
 
+class WebAuthSettings(BaseModel):
+    """Web/API authentication settings model"""
+    enabled: Optional[bool] = None
+    username: Optional[str] = None
+
+
 # ============ General Settings ============
 
 @router.get("")
@@ -197,6 +203,36 @@ async def import_config(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid JSON format")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+# ============ Web Auth Settings ============
+
+@router.get("/web-auth")
+async def get_web_auth_settings():
+    """Get web/API authentication settings"""
+    config = get_config()
+    return {
+        "enabled": config.web.auth.enabled,
+        "username": config.web.auth.username,
+        "api_token_configured": bool(config.web.auth.api_token),
+    }
+
+
+@router.put("/web-auth")
+async def update_web_auth_settings(settings: WebAuthSettings):
+    """Update web/API authentication settings"""
+    config = get_config()
+
+    if settings.enabled is not None:
+        config.web.auth.enabled = settings.enabled
+    if settings.username is not None and settings.username.strip():
+        config.web.auth.username = settings.username.strip()
+
+    if config.save():
+        reload_config()
+        return {"message": "Web auth settings updated", "success": True}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save web auth settings. Check permissions.")
 
 
 # ============ OpenList Settings ============

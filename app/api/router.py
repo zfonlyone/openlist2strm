@@ -10,15 +10,15 @@ from .tasks import router as tasks_router
 from .settings import router as settings_router
 from .cleanup import router as cleanup_router
 from .auth import (
-    require_auth, 
-    login_user, 
-    delete_session, 
+    require_auth,
+    login_user,
+    delete_session,
     generate_api_token,
     hash_password,
     SESSION_COOKIE_NAME,
     get_session_from_request,
 )
-from app.config import get_config
+from app.config import get_config, reload_config
 
 api_router = APIRouter(prefix="/api")
 
@@ -39,13 +39,13 @@ class LoginResponse(BaseModel):
 async def login(request: Request, data: LoginRequest):
     """Login endpoint"""
     session_id = login_user(data.username, data.password)
-    
+
     if not session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
-    
+
     response = JSONResponse(
         content={"success": True, "message": "Login successful"}
     )
@@ -65,7 +65,7 @@ async def logout(request: Request):
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id:
         delete_session(session_id)
-    
+
     response = JSONResponse(content={"success": True, "message": "Logged out"})
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response
@@ -76,19 +76,50 @@ async def auth_status(request: Request):
     """Check authentication status"""
     config = get_config()
     session = get_session_from_request(request)
-    
+
     return {
         "authenticated": session is not None or not config.web.auth.enabled,
         "auth_enabled": config.web.auth.enabled,
         "username": session["username"] if session else None,
+        "api_token_configured": bool(config.web.auth.api_token),
     }
 
 
 @api_router.post("/auth/generate-token", dependencies=[Depends(require_auth)])
 async def generate_new_token():
-    """Generate a new API token"""
+    """Generate and persist a new API token"""
+    config = get_config()
     token = generate_api_token()
-    return {"token": token, "message": "Save this token - it won't be shown again!"}
+    config.web.auth.api_token = token
+
+    if not config.save():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to persist API token",
+        )
+
+    reload_config()
+    return {
+        "token": token,
+        "message": "API token generated and saved successfully. Save this token now - it may be hidden later.",
+    }
+
+
+@api_router.put("/auth/password", dependencies=[Depends(require_auth)])
+async def update_password(data: LoginRequest):
+    """Update admin password and store hashed value"""
+    config = get_config()
+    config.web.auth.username = data.username
+    config.web.auth.password = hash_password(data.password)
+
+    if not config.save():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to persist password",
+        )
+
+    reload_config()
+    return {"success": True, "message": "Password updated successfully"}
 
 
 # Protected sub-routers with auth dependency
@@ -116,15 +147,15 @@ async def get_status():
     from app.core.cache import get_cache_manager
     from app.core.scanner import get_scanner
     from app.scheduler import get_scheduler_manager
-    
+
     cache = get_cache_manager()
     scanner = get_scanner()
     scheduler = get_scheduler_manager()
-    
+
     # Get cache stats
     stats = await cache.get_stats()
     last_scan = await cache.get_last_scan()
-    
+
     return {
         "scanner": {
             "running": scanner.is_running,

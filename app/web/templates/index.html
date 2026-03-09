@@ -452,6 +452,60 @@
                     <button class="btn btn-primary" onclick="updateQoS()">保存 QoS 设置</button>
                 </div>
 
+                <!-- Web API 鉴权设置 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🛡️ API 鉴权设置</span>
+                    </div>
+
+                    <div class="info-box" style="margin-bottom: var(--spacing-md);">
+                        <div class="info-box-title">💡 用法</div>
+                        开启后，可通过请求头 <code>Authorization: Bearer sk-...</code> 访问受保护 API。
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label class="form-label">启用 Web/API 鉴权</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="web-auth-enabled" onchange="handleWebAuthToggle(this)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span id="web-auth-enabled-status"
+                                style="font-size: 0.875rem; color: var(--text-secondary); margin-left: 8px;"></span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">管理员用户名</label>
+                            <input type="text" class="form-input" id="web-auth-username" placeholder="admin">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API Key 状态</label>
+                            <div id="web-auth-api-token-status" style="padding: 12px 14px; background: var(--bg-tertiary); border-radius: var(--radius-md); color: var(--text-secondary);">
+                                未配置
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新管理员密码</label>
+                            <input type="password" class="form-input" id="web-auth-password" placeholder="留空则不修改密码">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label class="form-label">当前 API Key</label>
+                            <div style="display: flex; gap: var(--spacing-sm);">
+                                <input type="password" class="form-input" id="web-auth-api-token" placeholder="点击生成后显示" readonly style="flex: 1;">
+                                <button class="btn btn-secondary" onclick="toggleApiTokenVisibility()">👁️</button>
+                                <button class="btn btn-secondary" onclick="copyApiToken()">📋 复制</button>
+                            </div>
+                            <div style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">
+                                生成的新 key 会自动保存到配置文件，前缀为 <code>sk-</code>。
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="saveWebAuthSettings()">💾 保存鉴权设置</button>
+                        <button class="btn btn-secondary" onclick="generateApiToken()">⚡ 生成 API Key</button>
+                    </div>
+                </div>
+
                 <!-- OpenList Token Settings -->
                 <div class="card">
                     <div class="card-header">

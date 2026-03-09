@@ -584,6 +584,7 @@ class Config:
                 "auth": {
                     "enabled": self.web.auth.enabled,
                     "username": self.web.auth.username,
+                    "api_token_configured": bool(self.web.auth.api_token),
                 },
             },
             "logging": {
