@@ -31,8 +31,9 @@
 mkdir -p /opt/openlist2strm/{config,data}
 mkdir -p /mnt/media/strm
 
-# 获取配置文件模板
-wget https://raw.githubusercontent.com/zfonlyone/openlist2strm/main/config.example.yml -O /opt/openlist2strm/config/config.yml
+# 获取 env 模板并填写
+wget https://raw.githubusercontent.com/zfonlyone/openlist2strm/main/env.example -O /opt/openlist2strm/env.example
+cp /opt/openlist2strm/env.example /opt/openlist2strm/.env
 
 # 启动容器
 docker-compose up -d
@@ -44,11 +45,75 @@ docker-compose up -d
 |--------|------|--------|
 | `CONFIG_PATH` | 配置文件在容器内的路径 | `/config/config.yml` |
 | `TZ` | 系统时区 | `Asia/Shanghai` |
-| `PUID` / `PGID` | 运行容器的用户/组 ID | `1000/1000` |
+| `OPENLIST_HOST` | OpenList 服务地址 | `http://openlist:5244` |
+| `OPENLIST_TOKEN` | OpenList API Token | 空 |
+| `PATHS_SOURCE` | 扫描路径，多个用逗号分隔 | `/115/流媒体` |
+| `WEB_AUTH_ENABLED` | 是否启用 Web/API 鉴权 | `true` |
+| `WEB_AUTH_USERNAME` | Web 管理员用户名 | `admin` |
+| `WEB_AUTH_PASSWORD` | Web 管理员密码 | 空 |
+| `WEB_AUTH_API_TOKEN` | Web/API 访问 Token | 空（建议设置） |
 
 ---
 
 ## 📖 核心功能教程
+
+### 🔐 Web/API 鉴权
+
+系统支持两种受保护访问方式：
+- **网页登录会话**：适合人工在浏览器里操作后台
+- **Bearer API Key**：适合脚本、自动化任务、外部服务调用
+
+#### 在设置页生成 API Key
+1. 打开 **设置** 页面
+2. 找到 **🛡️ API 鉴权设置**
+3. 可选：开启/关闭鉴权、修改管理员用户名、设置新密码
+4. 点击 **⚡ 生成 API Key**
+5. 系统会生成一个带 `sk-` 前缀的强 key，并自动保存到配置文件
+
+生成后的请求头格式：
+
+```bash
+Authorization: Bearer sk-xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+#### API 调用示例
+
+```bash
+# 健康检查（无需鉴权）
+curl http://127.0.0.1:9527/api/health
+
+# 获取系统状态（需鉴权）
+curl http://127.0.0.1:9527/api/status \
+  -H "Authorization: Bearer sk-your-generated-key"
+
+# 获取当前设置
+curl http://127.0.0.1:9527/api/settings \
+  -H "Authorization: Bearer sk-your-generated-key"
+
+# 触发扫描
+curl -X POST http://127.0.0.1:9527/api/scan \
+  -H "Authorization: Bearer sk-your-generated-key" \
+  -H "Content-Type: application/json" \
+  -d '{"folders": ["/115/电影"], "force": false}'
+```
+
+#### 配置文件说明
+- `web.auth.enabled`：是否启用 Web/API 鉴权
+- `web.auth.username`：后台管理员用户名
+- `web.auth.password`：后台管理员密码（建议保存 hash）
+- `web.auth.api_token`：API Key，支持 Bearer 鉴权
+
+#### 环境变量说明
+你也可以在 `.env` / compose 中预设：
+
+```bash
+WEB_AUTH_ENABLED=true
+WEB_AUTH_USERNAME=admin
+WEB_AUTH_PASSWORD=
+WEB_AUTH_API_TOKEN=sk-your-own-strong-key
+```
+
+> 注意：如果应用启动时通过环境变量注入 `WEB_AUTH_API_TOKEN`，它会覆盖配置文件中的值。
 
 ### ⚡ 自动化媒体库同步
 1.  **添加文件夹**: 在“文件夹”页面添加 OpenList 中需要监控的路径（如 `/115/电影`）。
@@ -69,6 +134,10 @@ docker-compose up -d
 chmod +x openlist2strm.sh
 ./openlist2strm.sh
 ```
+部署行为说明：
+- 脚本会先将当前仓库中的 `openlist2strm` 源码同步到 `/etc/media-server/openlist2strm`
+- 然后在 `/etc/media-server/openlist2strm` 目录执行 `docker compose build/up`
+
 主要功能：
 - 服务状态一键启停
 - 查看实时日志
