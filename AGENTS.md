@@ -20,6 +20,25 @@
 - Keep runtime secrets outside the repo (system env, secret manager, or `/etc/...` path).
 - For CI/CD, use platform secret storage only (GitHub Actions Secrets, etc.).
 
+## Deployment Convention
+- Dev repo path: `/root/code/docker/openlist2strm`
+- Target deploy path: `/etc/media-server/openlist2strm`
+- Deployment script must sync local project source to target path first, then run Docker build/start in that target path.
+- Runtime `.env` must live in target path only (`/etc/media-server/openlist2strm/.env`), never in this repository.
+- Keep persistent runtime data outside source sync scope (for example: `config/`, `data/`, runtime media output directories).
+- Do not assume source repo changes are live until target path has been synced and compose/service restarted.
+
+## Deploy / Verify Flow
+1. Modify code in `/root/code/docker/openlist2strm`
+2. Run project-level validation/build as needed
+3. Sync repo → target path
+4. Rebuild/restart from `/etc/media-server/openlist2strm`
+5. Verify:
+   - `docker compose ps`
+   - `docker inspect <container>`
+   - local port / local URL
+   - public URL if exposed
+
 ## Commit Gate
 - Before committing, verify no secret-like content was introduced.
 - If secret-like content is found, stop changes and replace with placeholders immediately.
