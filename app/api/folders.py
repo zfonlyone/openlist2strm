@@ -13,6 +13,7 @@ router = APIRouter(prefix="/folders")
 
 class FolderInfo(BaseModel):
     """Folder information model"""
+
     id: str
     path: str
     enabled: bool = True
@@ -22,12 +23,14 @@ class FolderInfo(BaseModel):
 
 class AddFolderRequest(BaseModel):
     """Add folder request model"""
+
     path: str
     enabled: bool = True
 
 
 class UpdateFolderRequest(BaseModel):
     """Update folder request model"""
+
     enabled: Optional[bool] = None
 
 
@@ -66,37 +69,37 @@ async def list_folders():
     for path in configured_folders:
         db_info = db_folder_map.get(path, {})
         files = await cache.get_all_files(path)
-        folders.append({
-            "id": _encode_folder_id(path, db_info.get("id")),
-            "path": path,
-            "enabled": db_info.get("enabled", True) if db_info else True,
-            "last_scan": db_info.get("last_scan"),
-            "file_count": len(files),
-            "from_config": True,
-        })
+        folders.append(
+            {
+                "id": _encode_folder_id(path, db_info.get("id")),
+                "path": path,
+                "enabled": db_info.get("enabled", True) if db_info else True,
+                "last_scan": db_info.get("last_scan"),
+                "file_count": len(files),
+                "from_config": True,
+            }
+        )
 
     for path, db_info in db_folder_map.items():
         if path not in configured_folders:
             files = await cache.get_all_files(path)
-            folders.append({
-                "id": _encode_folder_id(path, db_info.get("id")),
-                "path": path,
-                "enabled": db_info.get("enabled", True),
-                "last_scan": db_info.get("last_scan"),
-                "file_count": len(files),
-                "from_config": False,
-            })
+            folders.append(
+                {
+                    "id": _encode_folder_id(path, db_info.get("id")),
+                    "path": path,
+                    "enabled": db_info.get("enabled", True),
+                    "last_scan": db_info.get("last_scan"),
+                    "file_count": len(files),
+                    "from_config": False,
+                }
+            )
 
     return {"folders": folders}
 
 
 @router.post("")
 async def add_folder(request: AddFolderRequest):
-    """
-    Add a new folder to monitor.
-
-    Persistence: Automatically updates config.yml and database.
-    """
+    """Add a new folder to monitor. Persistence: updates config + database."""
     cache = get_cache_manager()
     config = get_config()
 
@@ -112,6 +115,68 @@ async def add_folder(request: AddFolderRequest):
         "enabled": request.enabled,
         "persistent": request.path in config.paths.source,
     }
+
+
+# NOTE: Define /by-id routes BEFORE /{folder_path:path} so they are reachable.
+@router.put("/by-id/{folder_id}")
+async def update_folder_by_id(folder_id: str, request: UpdateFolderRequest):
+    """Update folder by logical ID, then resolve to path."""
+    cache = get_cache_manager()
+
+    path = None
+    if folder_id.startswith("db:"):
+        db_id = folder_id[3:]
+        db_folders = await cache.get_folders()
+        for f in db_folders:
+            if str(f.get("id")) == str(db_id):
+                path = f.get("path")
+                break
+    elif folder_id.startswith("cfg:"):
+        path = _decode_cfg_id(folder_id)
+
+    if not path:
+        raise HTTPException(status_code=404, detail="Folder ID not found")
+
+    path = "/" + str(path).lstrip("/")
+    if request.enabled is not None:
+        await cache.add_folder(path, request.enabled)
+
+    return {
+        "message": f"Folder updated by id: {folder_id}",
+        "path": path,
+        "id": folder_id,
+        "enabled": request.enabled,
+    }
+
+
+@router.delete("/by-id/{folder_id}")
+async def remove_folder_by_id(folder_id: str):
+    """Remove folder by logical ID, then resolve to path."""
+    cache = get_cache_manager()
+    config = get_config()
+
+    path = None
+    if folder_id.startswith("db:"):
+        db_id = folder_id[3:]
+        db_folders = await cache.get_folders()
+        for f in db_folders:
+            if str(f.get("id")) == str(db_id):
+                path = f.get("path")
+                break
+    elif folder_id.startswith("cfg:"):
+        path = _decode_cfg_id(folder_id)
+
+    if not path:
+        raise HTTPException(status_code=404, detail="Folder ID not found")
+
+    path = "/" + str(path).lstrip("/")
+    if path in config.paths.source:
+        config.paths.source.remove(path)
+        config.save()
+
+    await cache.remove_folder(path)
+
+    return {"message": f"Folder removed by id: {folder_id}", "path": path, "id": folder_id}
 
 
 @router.put("/{folder_path:path}")
@@ -133,11 +198,7 @@ async def update_folder(folder_path: str, request: UpdateFolderRequest):
 
 @router.delete("/{folder_path:path}")
 async def remove_folder(folder_path: str):
-    """
-    Remove a folder from monitoring.
-
-    Persistence: Removes from both database and config.yml.
-    """
+    """Remove a folder from monitoring. Persistence: removes from config + database."""
     cache = get_cache_manager()
     config = get_config()
 
@@ -167,70 +228,9 @@ async def remove_folder_by_query(path: str):
     return await remove_folder(path)
 
 
-
-
-@router.put("/by-id/{folder_id}")
-async def update_folder_by_id(folder_id: str, request: UpdateFolderRequest):
-    """Update folder by logical ID, then resolve to path."""
-    cache = get_cache_manager()
-
-    path = None
-    if folder_id.startswith("db:"):
-        db_id = folder_id[3:]
-        db_folders = await cache.get_folders()
-        for f in db_folders:
-            if str(f.get("id")) == str(db_id):
-                path = f.get("path")
-                break
-    elif folder_id.startswith("cfg:"):
-        path = _decode_cfg_id(folder_id)
-
-    if not path:
-        raise HTTPException(status_code=404, detail="Folder ID not found")
-
-    path = "/" + str(path).lstrip("/")
-    if request.enabled is not None:
-        await cache.add_folder(path, request.enabled)
-
-    return {"message": f"Folder updated by id: {folder_id}", "path": path, "id": folder_id, "enabled": request.enabled}
-
-@router.delete("/by-id/{folder_id}")
-async def remove_folder_by_id(folder_id: str):
-    """Remove folder by logical ID, then resolve to path."""
-    cache = get_cache_manager()
-    config = get_config()
-
-    path = None
-    if folder_id.startswith("db:"):
-        db_id = folder_id[3:]
-        db_folders = await cache.get_folders()
-        for f in db_folders:
-            if str(f.get("id")) == str(db_id):
-                path = f.get("path")
-                break
-    elif folder_id.startswith("cfg:"):
-        path = _decode_cfg_id(folder_id)
-
-    if not path:
-        raise HTTPException(status_code=404, detail="Folder ID not found")
-
-    path = "/" + str(path).lstrip("/")
-    if path in config.paths.source:
-        config.paths.source.remove(path)
-        config.save()
-    await cache.remove_folder(path)
-
-    return {"message": f"Folder removed by id: {folder_id}", "path": path, "id": folder_id}
-
-
 @router.get("/{folder_path:path}/files")
 async def list_folder_files(folder_path: str, limit: int = 100, offset: int = 0):
-    """
-    List files in a folder from cache.
-
-    - **limit**: Maximum number of files to return
-    - **offset**: Number of files to skip
-    """
+    """List files in a folder from cache."""
     cache = get_cache_manager()
 
     folder_path = "/" + folder_path.lstrip("/")
@@ -238,7 +238,7 @@ async def list_folder_files(folder_path: str, limit: int = 100, offset: int = 0)
     all_files = await cache.get_all_files(folder_path)
 
     total = len(all_files)
-    files = all_files[offset:offset + limit]
+    files = all_files[offset : offset + limit]
 
     return {
         "folder": folder_path,
@@ -251,11 +251,7 @@ async def list_folder_files(folder_path: str, limit: int = 100, offset: int = 0)
 
 @router.get("/browse")
 async def browse_openlist(path: str = "/"):
-    """
-    Browse OpenList directory structure.
-
-    - **path**: Directory path in OpenList to browse
-    """
+    """Browse OpenList directory structure."""
     from app.core.openlist import get_openlist_client
 
     client = get_openlist_client()

@@ -117,6 +117,7 @@ class SchedulerManager:
                 "task_name": task.name,
                 "created": total_created,
                 "updated": total_updated,
+                "deleted": total_deleted,
             })
             
             # Handle one-time task

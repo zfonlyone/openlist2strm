@@ -365,6 +365,7 @@ async function loadFolders() {
 
         container.innerHTML = state.folders.map(folder => {
             const escapedPath = folder.path.replace(/'/g, "\\'");
+            const folderId = folder.id || '';
             return `
             <div class="folder-item">
                 <span class="folder-icon">${folder.enabled !== false ? '📁' : '📂'}</span>
@@ -388,10 +389,7 @@ async function loadFolders() {
                     ? `<button class="btn btn-warning btn-sm" onclick="toggleFolder('${escapedPath}', false, '${folderId}')">禁用</button>`
                     : `<button class="btn btn-success btn-sm" onclick="toggleFolder('${escapedPath}', true, '${folderId}')">启用</button>`
                 }
-                    ${!folder.from_config
-                    ? `<button class="btn btn-danger btn-sm" onclick="deleteFolder('${escapedPath}', '${folderId}')">删除</button>`
-                    : ''
-                }
+                    <button class="btn btn-danger btn-sm" onclick="deleteFolder('${escapedPath}', '${folderId}')">删除</button>
                 </div>
             </div>
         `}).join('');
