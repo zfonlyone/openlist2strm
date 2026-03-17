@@ -1,0 +1,13 @@
+.git
+.github/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+AGENTS.md
+GEMINI.md
+README.md
+config/
+env.example
+etc/
+scripts/

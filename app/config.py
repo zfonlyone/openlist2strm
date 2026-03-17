@@ -3,10 +3,69 @@
 import os
 import uuid
 import yaml
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+
+
+RUNTIME_ENV_FILE = "/etc/media-server/openlist2strm/.env"
+SECRET_ENV_BINDINGS = {
+    "openlist.token": ("OPENLIST_TOKEN", ("openlist", "token")),
+    "telegram.token": ("TELEGRAM_TOKEN", ("telegram", "token")),
+    "emby.api_key": ("EMBY_API_KEY", ("emby", "api_key")),
+    "web.auth.password": ("WEB_AUTH_PASSWORD", ("web", "auth", "password")),
+    "web.auth.api_token": ("WEB_AUTH_API_TOKEN", ("web", "auth", "api_token")),
+}
+
+
+def _get_nonempty_env(name: str) -> Optional[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
+
+
+def get_secret_env_var(secret_key: str) -> Optional[str]:
+    binding = SECRET_ENV_BINDINGS.get(secret_key)
+    if binding is None:
+        return None
+    return binding[0]
+
+
+def is_secret_managed_by_env(secret_key: str) -> bool:
+    env_var = get_secret_env_var(secret_key)
+    if env_var is None:
+        return False
+    return _get_nonempty_env(env_var) is not None
+
+
+def env_managed_secret_message(secret_key: str) -> str:
+    env_var = get_secret_env_var(secret_key)
+    if env_var is None:
+        return "该字段由运行时环境管理。"
+    return f"该字段由运行时环境变量 {env_var} 管理，请在 {RUNTIME_ENV_FILE} 中修改后重新部署或重启服务。"
+
+
+def _set_nested_value(data: Dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    node: Any = data
+    for key in path[:-1]:
+        if not isinstance(node, dict):
+            return
+        node = node.get(key)
+    if isinstance(node, dict):
+        node[path[-1]] = value
+
+
+def sanitize_config_for_persist(data: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = deepcopy(data)
+    for env_var, path in SECRET_ENV_BINDINGS.values():
+        if _get_nonempty_env(env_var) is not None:
+            _set_nested_value(sanitized, path, "")
+    return sanitized
 
 
 def _parse_bool(value: Any, default: Optional[bool] = None) -> Optional[bool]:
@@ -272,7 +331,9 @@ class Config:
         env = os.environ
 
         self.openlist.host = env.get("OPENLIST_HOST", self.openlist.host)
-        self.openlist.token = env.get("OPENLIST_TOKEN", self.openlist.token)
+        openlist_token = _get_nonempty_env("OPENLIST_TOKEN")
+        if openlist_token is not None:
+            self.openlist.token = openlist_token
         self.openlist.timeout = _parse_int(env.get("OPENLIST_TIMEOUT"), self.openlist.timeout) or self.openlist.timeout
 
         source_paths = _parse_csv_list(env.get("PATHS_SOURCE"))
@@ -301,7 +362,9 @@ class Config:
         self.incremental.check_method = env.get("INCREMENTAL_CHECK_METHOD", self.incremental.check_method)
 
         self.telegram.enabled = _parse_bool(env.get("TELEGRAM_ENABLED"), self.telegram.enabled)
-        self.telegram.token = env.get("TELEGRAM_TOKEN", self.telegram.token)
+        telegram_token = _get_nonempty_env("TELEGRAM_TOKEN")
+        if telegram_token is not None:
+            self.telegram.token = telegram_token
         self.telegram.chat_id = env.get("TELEGRAM_CHAT_ID", self.telegram.chat_id)
         self.telegram.topic_id = env.get("TELEGRAM_TOPIC_ID", self.telegram.topic_id)
         allowed_users = _parse_csv_list(env.get("TELEGRAM_ALLOWED_USERS"), cast_int=True)
@@ -319,7 +382,9 @@ class Config:
 
         self.emby.enabled = _parse_bool(env.get("EMBY_ENABLED"), self.emby.enabled)
         self.emby.host = env.get("EMBY_HOST", self.emby.host)
-        self.emby.api_key = env.get("EMBY_API_KEY", self.emby.api_key)
+        emby_api_key = _get_nonempty_env("EMBY_API_KEY")
+        if emby_api_key is not None:
+            self.emby.api_key = emby_api_key
         self.emby.library_id = env.get("EMBY_LIBRARY_ID", self.emby.library_id)
         self.emby.notify_on_scan = _parse_bool(env.get("EMBY_NOTIFY_ON_SCAN"), self.emby.notify_on_scan)
 
@@ -327,8 +392,12 @@ class Config:
         self.web.port = _parse_int(env.get("WEB_PORT"), self.web.port) or self.web.port
         self.web.auth.enabled = _parse_bool(env.get("WEB_AUTH_ENABLED"), self.web.auth.enabled)
         self.web.auth.username = env.get("WEB_AUTH_USERNAME", self.web.auth.username)
-        self.web.auth.password = env.get("WEB_AUTH_PASSWORD", self.web.auth.password)
-        self.web.auth.api_token = env.get("WEB_AUTH_API_TOKEN", self.web.auth.api_token)
+        web_auth_password = _get_nonempty_env("WEB_AUTH_PASSWORD")
+        if web_auth_password is not None:
+            self.web.auth.password = web_auth_password
+        web_auth_api_token = _get_nonempty_env("WEB_AUTH_API_TOKEN")
+        if web_auth_api_token is not None:
+            self.web.auth.api_token = web_auth_api_token
 
         self.logging.level = env.get("LOG_LEVEL", self.logging.level)
         self.logging.retention_days = _parse_int(env.get("LOG_RETENTION_DAYS"), self.logging.retention_days) or self.logging.retention_days
@@ -702,8 +771,10 @@ class Config:
                 },
             }
             
+            save_data = sanitize_config_for_persist(save_data)
+
             with open(path, "w", encoding="utf-8") as f:
-                yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True)
+                yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
             
             # Verify saved
             if path.exists() and path.stat().st_size > 0:

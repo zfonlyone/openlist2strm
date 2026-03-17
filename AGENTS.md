@@ -1,6 +1,7 @@
 # AGENTS
 
 ## Security Baseline
+- **不要直接修改env中的密钥和容器密钥，需要得到我的同意才可以。**
 - Never create, modify, or commit any secret file inside this repository.
 - Never write real credentials into source files, examples, scripts, compose files, or docs.
 - Treat all tokens, passwords, API keys, private keys, and session strings as prohibited content.
@@ -21,18 +22,20 @@
 - For CI/CD, use platform secret storage only (GitHub Actions Secrets, etc.).
 
 ## Deployment Convention
-- Dev repo path: `/root/code/docker/openlist2strm`
+- Dev repo path: `/root/code/media-server/openlist2strm`
 - Target deploy path: `/etc/media-server/openlist2strm`
-- Deployment script must sync local project source to target path first, then run Docker build/start in that target path.
+- Docker image must be built in the source repository, not in the target runtime path.
+- Runtime path keeps config/data/control files only; source code must not live under `/etc/media-server/openlist2strm`.
+- Deployment entrypoint is `sudo ./scripts/deploy.sh` from the source repository.
 - Runtime `.env` must live in target path only (`/etc/media-server/openlist2strm/.env`), never in this repository.
 - Keep persistent runtime data outside source sync scope (for example: `config/`, `data/`, runtime media output directories).
-- Do not assume source repo changes are live until target path has been synced and compose/service restarted.
+- Do not assume source repo changes are live until `sudo ./scripts/deploy.sh` has rebuilt and restarted the service.
 
 ## Deploy / Verify Flow
-1. Modify code in `/root/code/docker/openlist2strm`
+1. Modify code in `/root/code/media-server/openlist2strm`
 2. Run project-level validation/build as needed
-3. Sync repo → target path
-4. Rebuild/restart from `/etc/media-server/openlist2strm`
+3. Run `sudo ./scripts/deploy.sh` in the source repo
+4. Rebuild image in source path and restart from `/etc/media-server/openlist2strm`
 5. Verify:
    - `docker compose ps`
    - `docker inspect <container>`

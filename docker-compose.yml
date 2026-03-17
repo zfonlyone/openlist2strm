@@ -1,20 +1,16 @@
-version: '3.8'
-
 services:
   openlist2strm:
-    build:
-      context: .
-    image: local/openlist2strm:dev
+    image: openlist2strm:latest
     container_name: openlist2strm
     restart: unless-stopped
     env_file:
-      - .env
+      - /etc/media-server/openlist2strm/.env
     ports:
       - "${OPENLIST2STRM_BIND_IP:-127.0.0.1}:${OPENLIST2STRM_WEB_PORT:-9527}:9527"
     volumes:
-      - ${OPENLIST2STRM_CONFIG_DIR:-./config}:/config:shared
-      - ${OPENLIST2STRM_DATA_DIR:-./data}:/data:shared
-      - ${OPENLIST2STRM_STRM_DIR:-./movie/strm}:/strm:shared
+      - ${OPENLIST2STRM_CONFIG_DIR:-/etc/media-server/openlist2strm/config}:/config:shared
+      - ${OPENLIST2STRM_DATA_DIR:-/etc/media-server/openlist2strm/data}:/data:shared
+      - ${OPENLIST2STRM_STRM_DIR:-/etc/media-server/openlist2strm/data/strm}:/strm:shared
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       CONFIG_PATH: ${CONFIG_PATH:-/config/config.yml}
@@ -51,7 +47,7 @@ services:
     networks:
       - media-server
     healthcheck:
-      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:9527/api/health')" ]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:9527/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

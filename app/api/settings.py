@@ -10,7 +10,13 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.config import get_config, reload_config
+from app.config import (
+    env_managed_secret_message,
+    get_config,
+    is_secret_managed_by_env,
+    reload_config,
+    sanitize_config_for_persist,
+)
 
 router = APIRouter(prefix="/settings")
 
@@ -190,9 +196,11 @@ async def import_config(file: UploadFile = File(...)):
             with open(backup_path, "w", encoding="utf-8") as f:
                 yaml.dump(current_config, f, default_flow_style=False, allow_unicode=True)
         
+        current_config = sanitize_config_for_persist(current_config)
+
         # Write merged config
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(current_config, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(current_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         
         # Reload config
         reload_config()
@@ -240,6 +248,9 @@ async def update_web_auth_settings(settings: WebAuthSettings):
 @router.put("/openlist/token")
 async def update_openlist_token(data: OpenListTokenUpdate):
     """Update OpenList API token"""
+    if is_secret_managed_by_env("openlist.token"):
+        raise HTTPException(status_code=409, detail=env_managed_secret_message("openlist.token"))
+
     config = get_config()
     
     # Update current config object
@@ -311,10 +322,12 @@ async def update_telegram_settings(settings: TelegramSettings):
     - **allowed_users**: List of user IDs allowed to control the bot
     """
     config = get_config()
-    
+
     if settings.enabled is not None:
         config.telegram.enabled = settings.enabled
     if settings.token is not None and settings.token != "***":
+        if is_secret_managed_by_env("telegram.token"):
+            raise HTTPException(status_code=409, detail=env_managed_secret_message("telegram.token"))
         config.telegram.token = settings.token
     if settings.chat_id is not None:
         config.telegram.chat_id = settings.chat_id
@@ -407,12 +420,14 @@ async def update_emby_settings(settings: EmbySettings):
     Update Emby notification settings.
     """
     config = get_config()
-    
+
     if settings.enabled is not None:
         config.emby.enabled = settings.enabled
     if settings.host is not None:
         config.emby.host = settings.host
     if settings.api_key is not None and settings.api_key != "***":
+        if is_secret_managed_by_env("emby.api_key"):
+            raise HTTPException(status_code=409, detail=env_managed_secret_message("emby.api_key"))
         config.emby.api_key = settings.api_key
     if settings.library_id is not None:
         config.emby.library_id = settings.library_id

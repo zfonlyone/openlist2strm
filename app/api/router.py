@@ -18,7 +18,12 @@ from .auth import (
     SESSION_COOKIE_NAME,
     get_session_from_request,
 )
-from app.config import get_config, reload_config
+from app.config import (
+    env_managed_secret_message,
+    get_config,
+    is_secret_managed_by_env,
+    reload_config,
+)
 
 api_router = APIRouter(prefix="/api")
 
@@ -88,6 +93,12 @@ async def auth_status(request: Request):
 @api_router.post("/auth/generate-token", dependencies=[Depends(require_auth)])
 async def generate_new_token():
     """Generate and persist a new API token"""
+    if is_secret_managed_by_env("web.auth.api_token"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=env_managed_secret_message("web.auth.api_token"),
+        )
+
     config = get_config()
     token = generate_api_token()
     config.web.auth.api_token = token
@@ -108,6 +119,12 @@ async def generate_new_token():
 @api_router.put("/auth/password", dependencies=[Depends(require_auth)])
 async def update_password(data: LoginRequest):
     """Update admin password and store hashed value"""
+    if is_secret_managed_by_env("web.auth.password"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=env_managed_secret_message("web.auth.password"),
+        )
+
     config = get_config()
     config.web.auth.username = data.username
     config.web.auth.password = hash_password(data.password)
