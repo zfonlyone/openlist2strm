@@ -38,7 +38,7 @@ sudo ./scripts/deploy.sh
 1. 初始化 `/etc/media-server/openlist2strm/{config,data}`
 2. 迁移旧版 `config.yml`、`cache.db`、`movie/strm` 等存量文件
 3. 在源码目录执行 `docker build -t openlist2strm:latest .`
-4. 将运行目录中的 `docker-compose.yml` 指向源码目录版本
+4. 将运行目录中的 `docker-compose.yml` 同步为源码目录版本
 5. 清理运行目录中的源码残留
 6. 在运行目录执行 `docker compose up -d`
 

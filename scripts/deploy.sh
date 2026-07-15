@@ -215,9 +215,9 @@ ensure_runtime_config() {
     fi
 }
 
-link_control_files() {
-    ln -sfn "${PROJECT_DIR}/docker-compose.yml" "${BASE_DIR}/docker-compose.yml"
-    log "运行目录 compose 已链接到源码目录"
+copy_control_files() {
+    cp -f "${PROJECT_DIR}/docker-compose.yml" "${BASE_DIR}/docker-compose.yml"
+    log "运行目录 compose 已同步"
 }
 
 clean_runtime_code() {
@@ -271,7 +271,7 @@ main() {
     log "在源码目录构建镜像..."
     docker build -t "${IMAGE_NAME}" "${PROJECT_DIR}"
 
-    link_control_files
+    copy_control_files
     clean_runtime_code
     ensure_network
 
